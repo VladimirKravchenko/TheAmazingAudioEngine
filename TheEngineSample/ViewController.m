@@ -13,6 +13,7 @@
 #import "AEExpanderFilter.h"
 #import "AELimiterFilter.h"
 #import "AERecorder.h"
+#import "AEAudioUnitFilePlayer.h"
 #import <QuartzCore/QuartzCore.h>
 
 #define checkResult(result,operation) (_checkResult((result),(operation),strrchr(__FILE__, '/')+1,__LINE__))
@@ -40,7 +41,7 @@ static const int kInputChannelsChangedContext;
 @property (nonatomic, strong) AEAudioFilePlayer *loop2;
 @property (nonatomic, strong) AEBlockChannel *oscillator;
 @property (nonatomic, strong) AEAudioUnitChannel *audioUnitPlayer;
-@property (nonatomic, strong) AEAudioFilePlayer *oneshot;
+@property (nonatomic, strong) AEAudioUnitFilePlayer *oneshot;
 @property (nonatomic, strong) AEPlaythroughChannel *playthrough;
 @property (nonatomic, strong) AELimiterFilter *limiter;
 @property (nonatomic, strong) AEExpanderFilter *expander;
@@ -460,22 +461,17 @@ static const int kInputChannelsChangedContext;
 }
 
 - (void)oneshotPlayButtonPressed:(UIButton*)sender {
-    if ( _oneshot ) {
-        [_audioController removeChannels:@[_oneshot]];
-        self.oneshot = nil;
+    if ( _oneshot.playing ) {
+        [_oneshot setPlaying:NO];
         _oneshotButton.selected = NO;
     } else {
-        self.oneshot = [AEAudioFilePlayer audioFilePlayerWithURL:[[NSBundle mainBundle] URLForResource:@"Organ Run" withExtension:@"m4a"]
-                                                 audioController:_audioController
-                                                           error:NULL];
-        _oneshot.removeUponFinish = YES;
-        __weak ViewController *weakSelf = self;
-        _oneshot.completionBlock = ^{
-            ViewController *strongSelf = weakSelf;
-            strongSelf.oneshot = nil;
-            strongSelf->_oneshotButton.selected = NO;
-        };
-        [_audioController addChannels:@[_oneshot]];
+        if (!_oneshot) {
+            self.oneshot = [AEAudioUnitFilePlayer audioUnitFilePlayerWithController:_audioController
+                                                                              error:NULL];
+            [_audioController addChannels:@[_oneshot]];
+            [self.oneshot setUrl:[[NSBundle mainBundle] URLForResource:@"Organ Run" withExtension:@"m4a"]];
+        }
+        [self.oneshot setPlaying:YES];
         _oneshotButton.selected = YES;
     }
 }
