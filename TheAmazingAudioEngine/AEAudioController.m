@@ -3785,6 +3785,82 @@ static void * firstUpstreamAudiobusSenderPort(AEChannelRef channel) {
     return [NSString stringWithFormat:@"%@%@%@", inputsString, inputsString.length > 0 && outputsString.length > 0 ? @" and " : @"", outputsString];
 }
 
+#pragma mark - Offline render
+
+BOOL AEAudioControllerRenderMainOutput(
+    __unsafe_unretained AEAudioController *audioController,
+    AudioTimeStamp inTimeStamp,
+    UInt32 inNumberFrames,
+    AudioBufferList *ioData
+) {
+    channel_producer_arg_t arg = {
+        .channel = audioController->_topChannel,
+        .timeStamp = inTimeStamp,
+        .ioActionFlags = 0,
+        .nextFilterIndex = 0
+    };
+    OSStatus result = channelAudioProducer((void *) &arg, ioData, &inNumberFrames);
+    handleCallbacksForChannel(arg.channel, &inTimeStamp, inNumberFrames, ioData);
+    return result;
+}
+
+#pragma mark - Play function for audio thread
+
+AEChannelGroupRef AEAudioControllerSearchForGroupContainingChannelMatchingPointer(
+    __unsafe_unretained AEAudioController *THIS,
+    void *ptr,
+    void *userInfo,
+    AEChannelGroupRef group,
+    int *index
+) {
+    // Find the matching channel in the table for the given group
+    for (int i = 0; i < group->channelCount; i++) {
+        AEChannelRef channel = group->channels[i];
+        if (!channel) continue;
+        if (channel->ptr == ptr && channel->object == userInfo) {
+            if (index) *index = i;
+            return group;
+        }
+        if (channel->type == kChannelTypeGroup) {
+            AEChannelGroupRef match = AEAudioControllerSearchForGroupContainingChannelMatchingPointer(
+                THIS, ptr, userInfo, channel->ptr, index
+            );
+            if (match)
+                return match;
+        }
+    }
+    return NULL;
+}
+
+void AEAudioControllerSetPlayingForChannel(
+    __unsafe_unretained AEAudioController *THIS,
+    void *channel,
+    void *renderCallback,
+    BOOL playing,
+    BOOL muted
+) {
+    int index;
+    AEChannelGroupRef group = AEAudioControllerSearchForGroupContainingChannelMatchingPointer(
+        THIS, renderCallback, channel, THIS->_topGroup, &index
+    );
+    if (!group) return;
+    AEChannelRef channelElement = group->channels[index];
+    channelElement->playing = playing;
+    AudioUnitParameterValue value = playing && !muted;
+    if (group->mixerAudioUnit) {
+        OSStatus result = AudioUnitSetParameter(
+            group->mixerAudioUnit,
+            kMultiChannelMixerParam_Enable,
+            kAudioUnitScope_Input,
+            index,
+            value,
+            0
+        );
+        checkResult(result, "AudioUnitSetParameter(kMultiChannelMixerParam_Enable)");
+    }
+    group->channels[index]->playing = playing && !muted;
+}
+
 @end
 
 #pragma mark -

@@ -10,6 +10,7 @@
 #import "AERecorder.h"
 #import "AEAudioUnitFilePlayer.h"
 #import "Track.h"
+#import "TrackCell.h"
 
 static const NSInteger kSecInMinute = 60;
 static const NSInteger kMillesimalMultiplier = 1000;
@@ -51,18 +52,19 @@ static const CGFloat kUpdateInterval = 0.2;
     [self setupPlayers];
 }
 
-#pragma mark - Preload tracks
+#pragma mark - Tracks
 
 - (void)preLoadTracks {
     NSURL *urlForMetronome = [[NSBundle mainBundle] URLForResource:@"metronome"
                                                      withExtension:@"mp3"];
-    Track *track1 = [Track trackWithName:@"Metronome 1" urlString:[urlForMetronome absoluteString]];
-    Track *track2= [Track trackWithName:@"Metronome 2" urlString:[urlForMetronome absoluteString]];
-    [self.tracks addObject:track1];
-    [self.tracks addObject:track2];
+    for (int i = 0; i < 10; i++) {
+        NSString *name = [NSString stringWithFormat:@"Metronome %i", i];
+        Track *track = [Track trackWithName:name urlString:[urlForMetronome absoluteString]];
+        [self.tracks addObject:track];
+    }
 }
 
-#pragma mark - Setup audio controller
+#pragma mark - Audio controller
 
 - (void)setupAudioController {
     AudioStreamBasicDescription description =
@@ -74,7 +76,7 @@ static const CGFloat kUpdateInterval = 0.2;
     [_audioController start:NULL];
 }
 
-#pragma mark - Setup players
+#pragma mark - Players
 
 - (void)setupPlayers {
     [self.tracks enumerateObjectsUsingBlock:^(Track *track, NSUInteger idx, BOOL *stop) {
@@ -104,6 +106,10 @@ static const CGFloat kUpdateInterval = 0.2;
     }
 }
 
+- (AEAudioUnitFilePlayer *)playerForTrack:(Track *)track {
+    return self.players[[self.tracks indexOfObject:track]];
+}
+
 #pragma mark - IBActions
 
 - (IBAction)playButtonPressed:(id)sender {
@@ -111,8 +117,6 @@ static const CGFloat kUpdateInterval = 0.2;
         [self stop];
     else
         [self play];
-    self.isPlaying = !self.isPlaying;
-    [self updatePlayButtonTitle];
 }
 
 - (IBAction)recButtonPressed:(id)sender {
@@ -123,7 +127,10 @@ static const CGFloat kUpdateInterval = 0.2;
     [self updateRecButtonTitle];
 }
 
-- (IBAction)sliderValueChanged:(id)sender {
+- (IBAction)sliderValueChanged:(UISlider *)sender {
+    [self stop];
+    [self.playerWithMaxDuration setCurrentTime:sender.value];
+    [self updateProgressViewsWithTime:sender.value];
 }
 
 #pragma mark - Interface
@@ -170,11 +177,26 @@ static const CGFloat kUpdateInterval = 0.2;
 #pragma mark - Play
 
 - (void)play {
+    self.isPlaying = YES;
+    [self updatePlayButtonTitle];
+    CFMutableArrayRef players = (__bridge CFMutableArrayRef)self.players;
+    __weak typeof(self) weakSelf = self;
     [self.players enumerateObjectsUsingBlock:
         ^(AEAudioUnitFilePlayer *player, NSUInteger idx, BOOL *stop) {
             [player setCurrentTime:self.playerWithMaxDuration.currentTime];
-            player.playing = YES;
         }];
+    [self.audioController
+        performAsynchronousMessageExchangeWithBlock:^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            for (CFIndex i = 0; i < CFArrayGetCount(players); i++) {
+                AEAudioUnitFilePlayer *player =
+                    (AEAudioUnitFilePlayer *) CFArrayGetValueAtIndex(players, i);
+                AEAudioUnitFilePlayerPlayWithAudioController(player, strongSelf->_audioController);
+            }
+        }
+                                      responseBlock:^{
+
+                                      }];
     if (![self.progressUpdateTimer isValid])
         [self addProgressUpdateTimer];
 }
@@ -202,6 +224,8 @@ static const CGFloat kUpdateInterval = 0.2;
 #pragma mark - Stop
 
 - (void)stop {
+    self.isPlaying = NO;
+    [self updatePlayButtonTitle];
     [self.players enumerateObjectsUsingBlock:
         ^(AEAudioUnitFilePlayer *player, NSUInteger idx, BOOL *stop) {
             player.playing = NO;
@@ -223,13 +247,32 @@ static const CGFloat kUpdateInterval = 0.2;
 #pragma mark - UITableViewDataSource
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return 0;
+    return self.tracks.count;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView
          cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    return nil;
+    TrackCell *cell = [tableView dequeueReusableCellWithIdentifier:@"TrackCell"
+                                                      forIndexPath:indexPath];
+    Track *track = self.tracks[(NSUInteger) indexPath.row];
+    [cell.nameLabel setText:track.name];
+    [cell setMuteBlock:^(TrackCell *aCell) {
+        [self muteActionForCell:aCell];
+    }];
+    return cell;
 }
 
+- (void)muteActionForCell:(TrackCell *)cell {
+    NSIndexPath *indexPath = [self.tableView indexPathForCell:cell];
+    Track *track = self.tracks[(NSUInteger) indexPath.row];
+    AEAudioUnitFilePlayer *player = [self playerForTrack:track];
+    if (player) {
+        player.volume = player.volume > 0 ? 0 : 1;
+        NSString *title = player.volume > 0 ? @"MUTE" : @"UNMUTE";
+        [cell.muteButton setTitle:title forState:UIControlStateNormal];
+    }
+    else
+        NSLog(@"No player was found for cell at %li row", (long) indexPath.row);
+}
 
 @end

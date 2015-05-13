@@ -54,4 +54,13 @@
 @property (nonatomic, readonly) AudioStreamBasicDescription audioDescription;  //!< Track audio description
 @property (nonatomic, copy) void(^completionBlock)();       //!< A block to be called when playback finishes
 
+void AEAudioUnitFilePlayerPlayWithAudioController(
+    __unsafe_unretained AEAudioUnitFilePlayer *THIS,
+    __unsafe_unretained AEAudioController *audioController
+);
+void AEAudioUnitFilePlayerStopInAudioController(
+    __unsafe_unretained AEAudioUnitFilePlayer *THIS,
+    __unsafe_unretained AEAudioController *audioController
+);
+
 @end

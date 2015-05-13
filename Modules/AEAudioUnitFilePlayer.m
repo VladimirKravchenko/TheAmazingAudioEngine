@@ -63,13 +63,118 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
 
 @synthesize url = _url, audioDescription = _audioDescription, completionBlock = _completionBlock;
 
-//-----------------------------------------------------------------------------
+static OSStatus renderCallback(
+    id channel,
+    AEAudioController *audioController,
+    const AudioTimeStamp *time,
+    UInt32 frames,
+    AudioBufferList *audio
+) {
+    AEAudioUnitFilePlayer *THIS = (AEAudioUnitFilePlayer *) channel;
+    AudioUnitRenderActionFlags flags = 0;
+    OSStatus result = AudioUnitRender(
+        THIS->_converterUnit ? THIS->_converterUnit : THIS->_audioUnit,
+        &flags,
+        time,
+        0,
+        frames,
+        audio
+    );
+    checkResult(result, "AudioUnitRender");
+    return result;
+}
+
+OSStatus AEAudioUnitFilePlayerSetupPlayRegion(__unsafe_unretained AEAudioUnitFilePlayer *THIS) {
+    OSStatus result = -1;
+    if (THIS->_audioUnitFile) {
+        if (THIS->_locatehead >= THIS->_lengthInFrames) {
+            THIS->_locatehead = 0;
+        }
+        ScheduledAudioFileRegion region;
+        memset (&region.mTimeStamp, 0, sizeof(region.mTimeStamp));
+        region.mTimeStamp.mFlags = kAudioTimeStampSampleTimeValid;
+        region.mTimeStamp.mSampleTime = 0;
+        region.mCompletionProc = NULL;
+        region.mCompletionProcUserData = (__bridge void *) (THIS);
+        region.mAudioFile = THIS->_audioUnitFile;
+        region.mLoopCount = 0;
+        region.mStartFrame = THIS->_locatehead;
+        region.mFramesToPlay = (UInt32) (THIS->_lengthInFrames - THIS->_locatehead);
+        result = AudioUnitSetProperty(
+            THIS->_audioUnit,
+            kAudioUnitProperty_ScheduledFileRegion,
+            kAudioUnitScope_Global,
+            0,
+            &region,
+            sizeof(region)
+        );
+        checkResult(result, "AudioUnitSetProperty(kAudioUnitProperty_ScheduledFileRegion)");
+
+        // Prime the player by reading some frames from disk
+        UInt32 defaultNumberOfFrames = 0;
+        result = AudioUnitSetProperty(
+            THIS->_audioUnit,
+            kAudioUnitProperty_ScheduledFilePrime,
+            kAudioUnitScope_Global,
+            0,
+            &defaultNumberOfFrames,
+            sizeof(defaultNumberOfFrames)
+        );
+        checkResult(result, "AudioUnitSetProperty(kAudioUnitProperty_ScheduledFilePrime)");
+
+        // Set the start time (now = -1)
+        AudioTimeStamp startTime;
+        memset (&startTime, 0, sizeof(startTime));
+        startTime.mFlags = kAudioTimeStampSampleTimeValid;
+        startTime.mSampleTime = -1;
+        result = AudioUnitSetProperty(
+            THIS->_audioUnit,
+            kAudioUnitProperty_ScheduleStartTimeStamp,
+            kAudioUnitScope_Global,
+            0,
+            &startTime,
+            sizeof(startTime)
+        );
+        checkResult(result, "AudioUnitSetProperty(kAudioUnitProperty_ScheduleStartTimeStamp)");
+    }
+    return result;
+}
+
+void AEAudioUnitFilePlayerPlayWithAudioController(
+    __unsafe_unretained AEAudioUnitFilePlayer *THIS,
+    __unsafe_unretained AEAudioController *audioController
+) {
+    AudioUnitReset(THIS->_audioUnit, kAudioUnitScope_Global, 0);
+    AEAudioUnitFilePlayerSetupPlayRegion(THIS);
+    THIS->_channelIsPlaying = YES;
+    AEAudioControllerSetPlayingForChannel(
+        audioController,
+        (__bridge void *)THIS,
+        renderCallback,
+        YES,
+        THIS->_channelIsMuted
+    );
+}
+
+void AEAudioUnitFilePlayerStopInAudioController(
+    __unsafe_unretained AEAudioUnitFilePlayer *THIS,
+    __unsafe_unretained AEAudioController *audioController
+) {
+    THIS->_channelIsPlaying = NO;
+    AEAudioControllerSetPlayingForChannel(
+        audioController,
+        (__bridge void *)THIS,
+        renderCallback,
+        NO,
+        THIS->_channelIsMuted
+    );
+}
+
 + (id)audioUnitFilePlayerWithController:(AEAudioController *)audioController
                                   error:(NSError **)error {
     return [[AEAudioUnitFilePlayer alloc] initWithAudioController:audioController error:error];
 }
 
-//-----------------------------------------------------------------------------
 - (void)dealloc {
     if (_node) {
         checkResult(AUGraphRemoveNode(_audioGraph, _node), "AUGraphRemoveNode");
@@ -84,12 +189,10 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
     _audioControllerRef = nil;
 }
 
-//-----------------------------------------------------------------------------
 - (void)setUrl:(NSURL *)url {
     [self loadURL:url error:nil];
 }
 
-//-----------------------------------------------------------------------------
 - (BOOL)playing {
     return self.channelIsPlaying;
 }
@@ -99,7 +202,7 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
         if (!self.channelIsPlaying) {
             // need to reset before creating the new start region
             AudioUnitReset(_audioUnit, kAudioUnitScope_Global, 0);
-            [self setupPlayRegion];
+            AEAudioUnitFilePlayerSetupPlayRegion(self);
             self.channelIsPlaying = YES;
         }
     }
@@ -111,7 +214,6 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
     }
 }
 
-//-----------------------------------------------------------------------------
 - (NSTimeInterval)duration {
     if (_audioDescription.mSampleRate > 1.0f) {
         return (double) _lengthInFrames / (double) _audioDescription.mSampleRate;
@@ -153,7 +255,6 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
     }
 }
 
-//-----------------------------------------------------------------------------
 - (id)initWithAudioController:(AEAudioController *)audioController error:(NSError **)error {
     self = [super init];
     if (self) {
@@ -166,15 +267,19 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
         _locatehead = 0;
         _lengthInFrames = 0;
         _completionBlock = nil;
-        AudioComponentDescription aedesc = AEAudioComponentDescriptionMake(kAudioUnitManufacturer_Apple, kAudioUnitType_Generator, kAudioUnitSubType_AudioFilePlayer);
-
-        // the following is lifted from the AEAudioUnitChannel class
+        AudioComponentDescription description = AEAudioComponentDescriptionMake(
+            kAudioUnitManufacturer_Apple,
+            kAudioUnitType_Generator,
+            kAudioUnitSubType_AudioFilePlayer
+        );
 
         // Create the node, and the audio unit
         _audioGraph = audioController.audioGraph;
-        OSStatus result;
-        if (!checkResult(result = AUGraphAddNode(_audioGraph, &aedesc, &_node), "AUGraphAddNode") ||
-            !checkResult(result = AUGraphNodeInfo(_audioGraph, _node, NULL, &_audioUnit), "AUGraphNodeInfo")) {
+        OSStatus result = AUGraphAddNode(_audioGraph, &description, &_node);
+        checkResult(result, "AUGraphAddNode");
+        result = AUGraphNodeInfo(_audioGraph, _node, NULL, &_audioUnit);
+        checkResult(result, "AUGraphNodeInfo");
+        if (result != noErr) {
             if (error)
                 *error = [NSError errorWithDomain:NSOSStatusErrorDomain
                                              code:result
@@ -231,7 +336,6 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
     return self;
 }
 
-//-----------------------------------------------------------------------------
 - (void)loadURL:(NSURL *)url error:(NSError **)error {
     OSStatus result;
     if (_audioUnitFile) {
@@ -259,58 +363,9 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
                 "AudioFileGetProperty(kAudioFilePropertyDataFormat)");
             _lengthInFrames = (UInt32) (packetCount * _audioDescription.mFramesPerPacket);
             _url = url;
-            [self setupPlayRegion];
+            AEAudioUnitFilePlayerSetupPlayRegion(self);
         }
     }
-
-}
-
-//-----------------------------------------------------------------------------
-- (OSStatus)setupPlayRegion {
-    OSStatus result = -1;
-    if (_audioUnitFile) {
-        if (_locatehead >= _lengthInFrames) {
-            _locatehead = 0;
-        }
-        ScheduledAudioFileRegion region;
-        memset (&region.mTimeStamp, 0, sizeof(region.mTimeStamp));
-        region.mTimeStamp.mFlags = kAudioTimeStampSampleTimeValid;
-        region.mTimeStamp.mSampleTime = 0;
-        region.mCompletionProc = NULL;
-        region.mCompletionProcUserData = (__bridge void *) (self);
-        region.mAudioFile = _audioUnitFile;
-        region.mLoopCount = 0;
-        region.mStartFrame = _locatehead;
-        region.mFramesToPlay = (UInt32) (_lengthInFrames - _locatehead);
-        checkResult(result = AudioUnitSetProperty(_audioUnit, kAudioUnitProperty_ScheduledFileRegion, kAudioUnitScope_Global, 0, &region, sizeof(region)),
-            "AudioUnitSetProperty(kAudioUnitProperty_ScheduledFileRegion)");
-
-        // Prime the player by reading some frames from disk
-        UInt32 defaultNumberOfFrames = 0;
-        checkResult(result = AudioUnitSetProperty(_audioUnit, kAudioUnitProperty_ScheduledFilePrime, kAudioUnitScope_Global, 0, &defaultNumberOfFrames, sizeof(defaultNumberOfFrames)),
-            "AudioUnitSetProperty(kAudioUnitProperty_ScheduledFilePrime)");
-
-        // Set the start time (now = -1)
-        AudioTimeStamp startTime;
-        memset (&startTime, 0, sizeof(startTime));
-        startTime.mFlags = kAudioTimeStampSampleTimeValid;
-        startTime.mSampleTime = -1;
-        checkResult(AudioUnitSetProperty(_audioUnit, kAudioUnitProperty_ScheduleStartTimeStamp, kAudioUnitScope_Global, 0, &startTime, sizeof(startTime)),
-            "AudioUnitSetProperty(kAudioUnitProperty_ScheduleStartTimeStamp)");
-    }
-    return result;
-}
-
-//-----------------------------------------------------------------------------
-static OSStatus renderCallback(id channel,
-    AEAudioController *audioController,
-    const AudioTimeStamp *time,
-    UInt32 frames,
-    AudioBufferList *audio) {
-    AEAudioUnitFilePlayer *THIS = (AEAudioUnitFilePlayer *) channel;
-    AudioUnitRenderActionFlags flags = 0;
-    checkResult(AudioUnitRender(THIS->_converterUnit ? THIS->_converterUnit : THIS->_audioUnit, &flags, time, 0, frames, audio), "AudioUnitRender");
-    return noErr;
 }
 
 - (AEAudioControllerRenderCallback)renderCallback {
