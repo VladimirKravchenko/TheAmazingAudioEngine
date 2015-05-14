@@ -56,7 +56,6 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
 - (void)loadURL:(NSURL *)url error:(NSError **)error;
 
 @property(nonatomic, assign) BOOL channelIsPlaying;
-@property(nonatomic, assign) BOOL channelIsMuted;
 
 @end
 

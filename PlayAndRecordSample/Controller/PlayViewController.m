@@ -460,8 +460,8 @@ static const CGFloat kUpdateInterval = 0.2;
     Track *track = self.tracks[(NSUInteger) indexPath.row];
     AEAudioUnitFilePlayer *player = [self playerForTrack:track];
     if (player) {
-        player.volume = player.volume > 0 ? 0 : 1;
-        NSString *title = player.volume > 0 ? @"MUTE" : @"UNMUTE";
+        player.channelIsMuted = !player.channelIsMuted;
+        NSString *title = player.channelIsMuted? @"UNMUTE" : @"MUTE";
         [cell.muteButton setTitle:title forState:UIControlStateNormal];
     }
     else
