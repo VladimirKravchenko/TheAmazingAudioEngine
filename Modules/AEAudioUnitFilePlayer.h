@@ -63,4 +63,6 @@ void AEAudioUnitFilePlayerStopInAudioController(
     __unsafe_unretained AEAudioController *audioController
 );
 
+AudioTimeStamp AEAudioUnitFilePlayerCurrentTime(__unsafe_unretained AEAudioUnitFilePlayer *THIS);
+
 @end

@@ -25,6 +25,7 @@
 //  3. This notice may not be removed or altered from any source distribution.
 //
 
+#import <string.h>
 #import "AEAudioUnitFilePlayer.h"
 
 #define checkResult(result, operation) (_checkResult((result),(operation),strrchr(__FILE__, '/')+1,__LINE__))
@@ -71,6 +72,8 @@ static OSStatus renderCallback(
     AudioBufferList *audio
 ) {
     AEAudioUnitFilePlayer *THIS = (AEAudioUnitFilePlayer *) channel;
+    if (!THIS->_channelIsPlaying)
+        return noErr;
     AudioUnitRenderActionFlags flags = 0;
     OSStatus result = AudioUnitRender(
         THIS->_converterUnit ? THIS->_converterUnit : THIS->_audioUnit,
@@ -140,6 +143,17 @@ OSStatus AEAudioUnitFilePlayerSetupPlayRegion(__unsafe_unretained AEAudioUnitFil
     return result;
 }
 
+AudioTimeStamp AEAudioUnitFilePlayerCurrentTime(__unsafe_unretained AEAudioUnitFilePlayer *THIS) {
+    OSStatus result;
+    AudioTimeStamp currentTime;
+    memset (&currentTime, 0, sizeof(currentTime));
+    UInt32 size = sizeof(currentTime);
+    result = AudioUnitGetProperty(THIS->_audioUnit, kAudioUnitProperty_CurrentPlayTime,
+        kAudioUnitScope_Global, 0, &currentTime, &size);
+    checkResult(result, "AudioUnitGetProperty - kAudioUnitProperty_CurrentPlayTime");
+    return currentTime;
+}
+
 void AEAudioUnitFilePlayerPlayWithAudioController(
     __unsafe_unretained AEAudioUnitFilePlayer *THIS,
     __unsafe_unretained AEAudioController *audioController
@@ -160,6 +174,8 @@ void AEAudioUnitFilePlayerStopInAudioController(
     __unsafe_unretained AEAudioUnitFilePlayer *THIS,
     __unsafe_unretained AEAudioController *audioController
 ) {
+    if (!THIS->_channelIsPlaying)
+        return;
     THIS->_channelIsPlaying = NO;
     AEAudioControllerSetPlayingForChannel(
         audioController,
@@ -168,6 +184,12 @@ void AEAudioUnitFilePlayerStopInAudioController(
         NO,
         THIS->_channelIsMuted
     );
+    AudioTimeStamp currentTime = AEAudioUnitFilePlayerCurrentTime(THIS);
+    THIS->_playhead = (SInt64) currentTime.mSampleTime;
+    THIS->_playhead += THIS->_locatehead;
+    THIS->_locatehead = THIS->_playhead;
+    NSLog(@"Stop playing %p with current time, %f", (__bridge void *)THIS,
+        (double) THIS->_playhead / (double) THIS->_audioDescription.mSampleRate);
 }
 
 + (id)audioUnitFilePlayerWithController:(AEAudioController *)audioController
@@ -223,14 +245,8 @@ void AEAudioUnitFilePlayerStopInAudioController(
 
 - (NSTimeInterval)currentTime {
     if (self.playing) {
-        OSStatus result;
-        AudioTimeStamp curTime;
-        memset (&curTime, 0, sizeof(curTime));
-        UInt32 valsz = sizeof(curTime);
-        checkResult(result = AudioUnitGetProperty(_audioUnit, kAudioUnitProperty_CurrentPlayTime,
-            kAudioUnitScope_Global, 0, &curTime, &valsz),
-            "AudioUnitGetProperty - kAudioUnitProperty_CurrentPlayTime");
-        _playhead = (SInt64) curTime.mSampleTime;
+        AudioTimeStamp currentTime = AEAudioUnitFilePlayerCurrentTime(self);
+        _playhead = (SInt64) currentTime.mSampleTime;
         _playhead += _locatehead;
     }
     if (_audioDescription.mSampleRate > 1.0f) {

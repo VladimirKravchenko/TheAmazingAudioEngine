@@ -101,6 +101,7 @@ void AERecorderStartRecording(__unsafe_unretained AERecorder* THIS) {
 
 void AERecorderStopRecording(__unsafe_unretained AERecorder* THIS) {
     THIS->_recording = NO;
+    NSLog(@"Stop recording time %f", THIS->_currentTime);
 }
 
 - (void)finishRecording {
@@ -130,7 +131,6 @@ static void audioCallback(__unsafe_unretained AERecorder *THIS,
                           UInt32                    frames,
                           AudioBufferList          *audio) {
     if ( !THIS->_recording ) return;
-    
     AEMixerBufferEnqueue(THIS->_mixer, source, audio, frames, time);
     
     // Let the mixer buffer provide the audio buffer

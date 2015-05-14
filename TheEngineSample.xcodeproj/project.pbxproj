@@ -71,6 +71,7 @@
 		8B68A2D31B02480A00937384 /* Storyboard.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 8B68A2D21B02480A00937384 /* Storyboard.storyboard */; };
 		8B68A2E91B024DD700937384 /* Track.m in Sources */ = {isa = PBXBuildFile; fileRef = 8B68A2E81B024DD700937384 /* Track.m */; };
 		8B68A2EB1B0257A900937384 /* metronome.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 8B68A2EA1B0257A900937384 /* metronome.mp3 */; };
+		8BCB293F1B048CA800C2E471 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8BCB293E1B048CA800C2E471 /* CoreMedia.framework */; };
 		FB30E3A7A3DC49CD0451E9B6 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = FB30EE48963360131964B897 /* main.m */; };
 		FB30E4524D4B7CE16C2C4C14 /* TrackCell.m in Sources */ = {isa = PBXBuildFile; fileRef = FB30E59FC2FC53C04E8DD5DC /* TrackCell.m */; };
 		FB30E8CAF7E655D86C2BAA1E /* AEAUAudioFilePlayerChannel.m in Sources */ = {isa = PBXBuildFile; fileRef = FB30EFF82D93233FF4F3CB34 /* AEAUAudioFilePlayerChannel.m */; };
@@ -156,6 +157,7 @@
 		8B68A2E71B024DD700937384 /* Track.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Track.h; sourceTree = "<group>"; };
 		8B68A2E81B024DD700937384 /* Track.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = Track.m; sourceTree = "<group>"; };
 		8B68A2EA1B0257A900937384 /* metronome.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = metronome.mp3; sourceTree = "<group>"; };
+		8BCB293E1B048CA800C2E471 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
 		FB30E19FD0BDD11B9B4DDED7 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.info; path = Info.plist; sourceTree = "<group>"; };
 		FB30E2435144589C4D40492C /* PlayViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayViewController.h; sourceTree = "<group>"; };
 		FB30E29B13041ADCF37DD4AA /* PlayViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = PlayViewController.m; sourceTree = "<group>"; };
@@ -190,6 +192,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8BCB293F1B048CA800C2E471 /* CoreMedia.framework in Frameworks */,
 				8B68A2B51B023E0100937384 /* AVFoundation.framework in Frameworks */,
 				8B68A2B61B023E0100937384 /* libTheAmazingAudioEngine.a in Frameworks */,
 				8B68A2B71B023E0100937384 /* Accelerate.framework in Frameworks */,
@@ -228,6 +231,7 @@
 		4C0C24881599FADD00D23E13 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				8BCB293E1B048CA800C2E471 /* CoreMedia.framework */,
 				4C58F8971945573C0039FB0A /* AVFoundation.framework */,
 				4C0C24BB159A00D500D23E13 /* Accelerate.framework */,
 				4C0C24B9159A00CB00D23E13 /* AudioToolbox.framework */,

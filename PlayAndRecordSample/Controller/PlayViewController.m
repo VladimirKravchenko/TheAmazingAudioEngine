@@ -6,6 +6,8 @@
 //  Copyright (c) 2015 A Tasty Pixel. All rights reserved.
 //
 
+#import <AVFoundation/AVFoundation.h>
+#import <CoreMedia/CoreMedia.h>
 #import "PlayViewController.h"
 #import "AERecorder.h"
 #import "AEAudioUnitFilePlayer.h"
@@ -17,19 +19,20 @@ static const NSInteger kMillesimalMultiplier = 1000;
 static const CGFloat kUpdateInterval = 0.2;
 
 @interface PlayViewController () <UITableViewDelegate, UITableViewDataSource>
-@property (weak, nonatomic) IBOutlet UILabel *secondsLabel;
-@property (weak, nonatomic) IBOutlet UILabel *milliSecondsLabel;
-@property (weak, nonatomic) IBOutlet UILabel *durationLabel;
-@property (weak, nonatomic) IBOutlet UISlider *progressSlider;
-@property (weak, nonatomic) IBOutlet UIButton *playButton;
-@property (weak, nonatomic) IBOutlet UIButton *recButton;
-@property (weak, nonatomic) IBOutlet UITableView *tableView;
-@property (strong, nonatomic) NSMutableArray *tracks;
-@property (strong, nonatomic) NSMutableArray *players;
-@property (strong, nonatomic) AEAudioUnitFilePlayer *playerWithMaxDuration;
-@property (assign, nonatomic) BOOL isPlaying;
-@property (strong, nonatomic) AERecorder *recorder;
-@property (strong, nonatomic) AEAudioController *audioController;
+
+@property(weak, nonatomic) IBOutlet UILabel *secondsLabel;
+@property(weak, nonatomic) IBOutlet UILabel *milliSecondsLabel;
+@property(weak, nonatomic) IBOutlet UILabel *durationLabel;
+@property(weak, nonatomic) IBOutlet UISlider *progressSlider;
+@property(weak, nonatomic) IBOutlet UIButton *playButton;
+@property(weak, nonatomic) IBOutlet UIButton *recButton;
+@property(weak, nonatomic) IBOutlet UITableView *tableView;
+@property(strong, nonatomic) NSMutableArray *tracks;
+@property(strong, nonatomic) NSMutableArray *players;
+@property(strong, nonatomic) AEAudioUnitFilePlayer *playerWithMaxDuration;
+@property(assign, nonatomic) BOOL isPlaying;
+@property(strong, nonatomic) AERecorder *recorder;
+@property(strong, nonatomic) AEAudioController *audioController;
 @property(strong, nonatomic) NSTimer *progressUpdateTimer;
 @end
 
@@ -57,7 +60,7 @@ static const CGFloat kUpdateInterval = 0.2;
 - (void)preLoadTracks {
     NSURL *urlForMetronome = [[NSBundle mainBundle] URLForResource:@"metronome"
                                                      withExtension:@"mp3"];
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 5; i++) {
         NSString *name = [NSString stringWithFormat:@"Metronome %i", i];
         Track *track = [Track trackWithName:name urlString:[urlForMetronome absoluteString]];
         [self.tracks addObject:track];
@@ -73,7 +76,7 @@ static const CGFloat kUpdateInterval = 0.2;
                                                                   inputEnabled:YES];
     _audioController.preferredBufferDuration = 0.005;
     _audioController.useMeasurementMode = YES;
-    [_audioController start:NULL];
+    [_audioController start:nil];
 }
 
 #pragma mark - Players
@@ -113,10 +116,14 @@ static const CGFloat kUpdateInterval = 0.2;
 #pragma mark - IBActions
 
 - (IBAction)playButtonPressed:(id)sender {
-    if (self.isPlaying)
-        [self stop];
+    if (self.isPlaying) {
+        if (self.recorder)
+            [self save];
+        else
+            [self stopSynchronouslyWithMessageBlock:nil completion:nil];
+    }
     else
-        [self play];
+        [self playSynchronouslyWithMessageBlock:nil completion:nil];
 }
 
 - (IBAction)recButtonPressed:(id)sender {
@@ -124,12 +131,18 @@ static const CGFloat kUpdateInterval = 0.2;
         [self save];
     else
         [self record];
-    [self updateRecButtonTitle];
 }
 
 - (IBAction)sliderValueChanged:(UISlider *)sender {
-    [self stop];
-    [self.playerWithMaxDuration setCurrentTime:sender.value];
+    if (self.recorder)
+        [self save];
+    else {
+        __weak typeof(self) weakSelf = self;
+        [self stopSynchronouslyWithMessageBlock:nil
+                                     completion:^{
+                                         [weakSelf.playerWithMaxDuration setCurrentTime:sender.value];
+                                     }];
+    }
     [self updateProgressViewsWithTime:sender.value];
 }
 
@@ -176,15 +189,16 @@ static const CGFloat kUpdateInterval = 0.2;
 
 #pragma mark - Play
 
-- (void)play {
+- (void)playSynchronouslyWithMessageBlock:(dispatch_block_t)messageBlock
+                               completion:(dispatch_block_t)completionBlock {
     self.isPlaying = YES;
     [self updatePlayButtonTitle];
-    CFMutableArrayRef players = (__bridge CFMutableArrayRef)self.players;
-    __weak typeof(self) weakSelf = self;
     [self.players enumerateObjectsUsingBlock:
         ^(AEAudioUnitFilePlayer *player, NSUInteger idx, BOOL *stop) {
             [player setCurrentTime:self.playerWithMaxDuration.currentTime];
         }];
+    CFMutableArrayRef players = (__bridge CFMutableArrayRef) self.players;
+    __weak typeof(self) weakSelf = self;
     [self.audioController
         performAsynchronousMessageExchangeWithBlock:^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
@@ -193,9 +207,12 @@ static const CGFloat kUpdateInterval = 0.2;
                     (AEAudioUnitFilePlayer *) CFArrayGetValueAtIndex(players, i);
                 AEAudioUnitFilePlayerPlayWithAudioController(player, strongSelf->_audioController);
             }
+            if (messageBlock)
+                messageBlock();
         }
                                       responseBlock:^{
-
+                                          if (completionBlock)
+                                              completionBlock();
                                       }];
     if (![self.progressUpdateTimer isValid])
         [self addProgressUpdateTimer];
@@ -223,25 +240,193 @@ static const CGFloat kUpdateInterval = 0.2;
 
 #pragma mark - Stop
 
-- (void)stop {
+- (void)stopSynchronouslyWithMessageBlock:(dispatch_block_t)messageBlock
+                               completion:(dispatch_block_t)completionBlock {
     self.isPlaying = NO;
     [self updatePlayButtonTitle];
-    [self.players enumerateObjectsUsingBlock:
-        ^(AEAudioUnitFilePlayer *player, NSUInteger idx, BOOL *stop) {
-            player.playing = NO;
-        }];
+    CFMutableArrayRef players = (__bridge CFMutableArrayRef) self.players;
+    __weak typeof(self) weakSelf = self;
+    [self.audioController
+        performAsynchronousMessageExchangeWithBlock:^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (messageBlock)
+                messageBlock();
+            for (CFIndex i = 0; i < CFArrayGetCount(players); i++) {
+                AEAudioUnitFilePlayer *player =
+                    (AEAudioUnitFilePlayer *) CFArrayGetValueAtIndex(players, i);
+                AEAudioUnitFilePlayerStopInAudioController(player, strongSelf->_audioController);
+            }
+        }
+                                      responseBlock:^{
+                                          if (completionBlock)
+                                              completionBlock();
+                                          [self.progressUpdateTimer invalidate];
+                                      }];
 }
 
 #pragma mark - Record
 
 - (void)record {
+    NSString *path = [self pathForNewRecordFile];
+    [self prepareRecorderWithPath:path];
+    [self updateRecButtonTitle];
+    __weak typeof(self) weakSelf = self;
+    [self playSynchronouslyWithMessageBlock:^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            AERecorderStartRecording(strongSelf->_recorder);
+        }
+                                 completion:nil];
+}
 
+- (NSString *)pathForNewRecordFile {
+    NSArray *cachesFolders =
+        NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
+    NSString *fileName = [NSString stringWithFormat:@"Rec_%@.m4a", [[NSUUID UUID] UUIDString]];
+    NSString *path = [cachesFolders[0] stringByAppendingPathComponent:fileName];
+    return path;
+}
+
+- (void)prepareRecorderWithPath:(NSString *)path {
+    if (!path.length)
+        return;
+    if (self.recorder)
+        return;
+    self.recorder = [[AERecorder alloc] initWithAudioController:self.audioController];
+    NSError *error = nil;
+    if (![self.recorder prepareRecordingToFileAtPath:path
+                                            fileType:kAudioFileM4AType
+                                               error:&error]) {
+        [[[UIAlertView alloc] initWithTitle:@"Error"
+                                    message:[NSString stringWithFormat:
+                                        @"Couldn't start recording: %@",
+                                        [error localizedDescription]]
+                                   delegate:nil
+                          cancelButtonTitle:@"OK"
+                          otherButtonTitles:nil] show];
+        self.recorder = nil;
+        return;
+    }
+    [self.audioController addInputReceiver:self.recorder];
 }
 
 #pragma mark - Save
 
 - (void)save {
+    __weak typeof(self) weakSelf = self;
+    [self stopSynchronouslyWithMessageBlock:^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            AERecorderStopRecording(strongSelf->_recorder);
+        }
+                                 completion:^{
+                                     [weakSelf finishRecordAndSaveTrack];
+                                 }];
+}
 
+- (void)finishRecordAndSaveTrack {
+    [self.recorder finishRecording];
+    [self.audioController removeInputReceiver:self.recorder];
+    NSURL *fileURL = [NSURL fileURLWithPath:self.recorder.path];
+    AVMutableComposition *composition = [[AVMutableComposition alloc] init];
+    AVMutableCompositionTrack *compositionTrack;
+    compositionTrack = [composition addMutableTrackWithMediaType:AVMediaTypeAudio
+                                                preferredTrackID:kCMPersistentTrackID_Invalid];
+    AVAsset *asset = [AVURLAsset URLAssetWithURL:fileURL options:nil];
+    NSArray *assetTracks = [asset tracksWithMediaType:AVMediaTypeAudio];
+    AVAssetTrack *assetTrack = [assetTracks firstObject];
+    NSTimeInterval trackDuration = CMTimeGetSeconds(asset.duration);
+    NSTimeInterval trackStartTime = self.playerWithMaxDuration.currentTime - trackDuration;
+    [self insertEmptyTimeToCompositionTrack:compositionTrack
+                              withStartTime:0
+                                andDuration:trackStartTime];
+    CMTimeRange timeRangeInAsset = CMTimeRangeMake(kCMTimeZero, asset.duration);
+    CMTime startTime = CMTimeMakeWithSeconds(trackStartTime, NSEC_PER_SEC);
+    NSError *error = nil;
+    BOOL success = [compositionTrack insertTimeRange:timeRangeInAsset
+                                             ofTrack:assetTrack
+                                              atTime:startTime
+                                               error:&error];
+    if (!success)
+        NSLog(@"Insert Track Error: %@", error);
+    if ([self validateCompositionTrack:compositionTrack]) {
+        __weak typeof(self) weakSelf = self;
+        [self saveComposition:composition
+                  withSuccess:^(NSString *filePath, NSTimeInterval duration){
+                      [weakSelf saveTrackWithFilePath:filePath duration:duration];
+                      weakSelf.recorder = nil;
+                      [weakSelf updateRecButtonTitle];
+                  }
+                      failure:^(NSString *errorMessage){
+                          [[[UIAlertView alloc] initWithTitle:@""
+                                                      message:errorMessage
+                                                     delegate:nil
+                                            cancelButtonTitle:@"Ok"
+                                            otherButtonTitles:nil] show];
+                      }];
+    }
+}
+
+- (void)saveTrackWithFilePath:(NSString *)filePath duration:(NSTimeInterval)duration {
+    Track *track = [Track trackWithName:filePath.lastPathComponent
+                              urlString:filePath];
+    [self.tracks addObject:track];
+    [self addPlayerForTrack:track];
+    [self.tableView reloadData];
+}
+
+- (void)insertEmptyTimeToCompositionTrack:(AVMutableCompositionTrack *)compositionTrack
+                            withStartTime:(NSTimeInterval)startTime
+                              andDuration:(NSTimeInterval)duration {
+    CMTime emptyStartTime = CMTimeMakeWithSeconds(startTime, NSEC_PER_SEC);
+    CMTime emptyDuration = CMTimeMakeWithSeconds(duration, NSEC_PER_SEC);
+    [compositionTrack insertEmptyTimeRange:CMTimeRangeMake(emptyStartTime, emptyDuration)];
+}
+
+- (BOOL)validateCompositionTrack:(AVMutableCompositionTrack *)compositionAudioTrack {
+    NSError *error = nil;
+    if (![compositionAudioTrack validateTrackSegments:compositionAudioTrack.segments
+                                                error:&error]) {
+        NSLog(@"Track segmants are invalid: %@", error.localizedDescription);
+        return NO;
+    }
+    return YES;
+}
+
+- (void)saveComposition:(AVMutableComposition *)composition
+            withSuccess:(void (^)(NSString *filePath, NSTimeInterval duration))successBlock
+                failure:(void (^)(NSString *errorMessage))failureBlock {
+    AVAssetExportSession *exportSession;
+    exportSession = [AVAssetExportSession exportSessionWithAsset:composition
+                                                      presetName:AVAssetExportPresetAppleM4A];
+    if (nil == exportSession) {
+        if (failureBlock)
+            failureBlock(@"Can not create export session");
+        return;
+    }
+    NSString *cachesDirectory =
+        NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES)[0];
+    NSString *lastPathComponent =
+        [NSString stringWithFormat:@"%@.m4a", [[NSUUID UUID] UUIDString]];
+    NSString *filePath = [cachesDirectory stringByAppendingPathComponent:lastPathComponent];
+    NSLog(@"Output file path - %@", filePath);
+    exportSession.outputURL = [NSURL fileURLWithPath:filePath];
+    exportSession.outputFileType = AVFileTypeAppleM4A;
+    [exportSession exportAsynchronouslyWithCompletionHandler:^{
+        if (AVAssetExportSessionStatusCompleted == exportSession.status) {
+            NSLog(@"AVAssetExportSessionStatusCompleted");
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (successBlock)
+                    successBlock(filePath, CMTimeGetSeconds(composition.duration));
+            });
+        }
+        else {
+            NSString *errorMessage = nil;
+            if (AVAssetExportSessionStatusFailed == exportSession.status)
+                errorMessage = @"Failed to write file";
+            NSLog(@"Export Session Status: %ld", (long) exportSession.status);
+            if (failureBlock)
+                failureBlock(errorMessage);
+        }
+    }];
 }
 
 #pragma mark - UITableViewDataSource
