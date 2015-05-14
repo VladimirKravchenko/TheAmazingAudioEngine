@@ -48,7 +48,6 @@
 		8B68A2B01B023E0100937384 /* TPCircularBuffer+AudioBufferList.c in Sources */ = {isa = PBXBuildFile; fileRef = 4C7C680516F1609800721E60 /* TPCircularBuffer+AudioBufferList.c */; };
 		8B68A2B11B023E0100937384 /* TPCircularBuffer.c in Sources */ = {isa = PBXBuildFile; fileRef = 4C7C680716F1609800721E60 /* TPCircularBuffer.c */; };
 		8B68A2B21B023E0100937384 /* AEAudioUnitFilePlayer.m in Sources */ = {isa = PBXBuildFile; fileRef = FB30E4FD14DED90F1A88A97D /* AEAudioUnitFilePlayer.m */; };
-		8B68A2B31B023E0100937384 /* AEAUAudioFilePlayerChannel.m in Sources */ = {isa = PBXBuildFile; fileRef = FB30EFF82D93233FF4F3CB34 /* AEAUAudioFilePlayerChannel.m */; };
 		8B68A2B51B023E0100937384 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C58F8971945573C0039FB0A /* AVFoundation.framework */; };
 		8B68A2B61B023E0100937384 /* libTheAmazingAudioEngine.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C7C67F116F1605A00721E60 /* libTheAmazingAudioEngine.a */; };
 		8B68A2B71B023E0100937384 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0C24BB159A00D500D23E13 /* Accelerate.framework */; };
@@ -74,7 +73,6 @@
 		8BCB293F1B048CA800C2E471 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8BCB293E1B048CA800C2E471 /* CoreMedia.framework */; };
 		FB30E3A7A3DC49CD0451E9B6 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = FB30EE48963360131964B897 /* main.m */; };
 		FB30E4524D4B7CE16C2C4C14 /* TrackCell.m in Sources */ = {isa = PBXBuildFile; fileRef = FB30E59FC2FC53C04E8DD5DC /* TrackCell.m */; };
-		FB30E8CAF7E655D86C2BAA1E /* AEAUAudioFilePlayerChannel.m in Sources */ = {isa = PBXBuildFile; fileRef = FB30EFF82D93233FF4F3CB34 /* AEAUAudioFilePlayerChannel.m */; };
 		FB30E91F27C1C96B66207B8E /* PlayViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = FB30E29B13041ADCF37DD4AA /* PlayViewController.m */; };
 		FB30ED9B27F5570A45B23DB1 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = FB30E93F67C902D5B0872626 /* AppDelegate.m */; };
 		FB30EDB604EC002AFC133DE6 /* AEAudioUnitFilePlayer.m in Sources */ = {isa = PBXBuildFile; fileRef = FB30E4FD14DED90F1A88A97D /* AEAudioUnitFilePlayer.m */; };
@@ -167,9 +165,7 @@
 		FB30E92F6192123EB6048F1F /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		FB30E93F67C902D5B0872626 /* AppDelegate.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
 		FB30EB6F52EDA738ACF57AD0 /* AEAudioUnitFilePlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AEAudioUnitFilePlayer.h; sourceTree = "<group>"; };
-		FB30ED1446B224AC61512143 /* AEAUAudioFilePlayerChannel.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AEAUAudioFilePlayerChannel.h; sourceTree = "<group>"; };
 		FB30EE48963360131964B897 /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
-		FB30EFF82D93233FF4F3CB34 /* AEAUAudioFilePlayerChannel.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AEAUAudioFilePlayerChannel.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -313,8 +309,6 @@
 				4C7C680316F1609800721E60 /* TPCircularBuffer */,
 				FB30EB6F52EDA738ACF57AD0 /* AEAudioUnitFilePlayer.h */,
 				FB30E4FD14DED90F1A88A97D /* AEAudioUnitFilePlayer.m */,
-				FB30EFF82D93233FF4F3CB34 /* AEAUAudioFilePlayerChannel.m */,
-				FB30ED1446B224AC61512143 /* AEAUAudioFilePlayerChannel.h */,
 			);
 			path = Modules;
 			sourceTree = "<group>";
@@ -525,7 +519,6 @@
 				4C7C681016F1609800721E60 /* TPCircularBuffer+AudioBufferList.c in Sources */,
 				4C7C681116F1609800721E60 /* TPCircularBuffer.c in Sources */,
 				FB30EDB604EC002AFC133DE6 /* AEAudioUnitFilePlayer.m in Sources */,
-				FB30E8CAF7E655D86C2BAA1E /* AEAUAudioFilePlayerChannel.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -543,7 +536,6 @@
 				8B68A2B01B023E0100937384 /* TPCircularBuffer+AudioBufferList.c in Sources */,
 				8B68A2B11B023E0100937384 /* TPCircularBuffer.c in Sources */,
 				8B68A2B21B023E0100937384 /* AEAudioUnitFilePlayer.m in Sources */,
-				8B68A2B31B023E0100937384 /* AEAUAudioFilePlayerChannel.m in Sources */,
 				FB30E4524D4B7CE16C2C4C14 /* TrackCell.m in Sources */,
 				FB30E91F27C1C96B66207B8E /* PlayViewController.m in Sources */,
 				FB30E3A7A3DC49CD0451E9B6 /* main.m in Sources */,
