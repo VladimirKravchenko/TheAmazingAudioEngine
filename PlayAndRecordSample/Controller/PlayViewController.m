@@ -234,8 +234,12 @@ static const CGFloat kUpdateInterval = 0.2;
         return;
     NSTimeInterval currentTime = self.playerWithMaxDuration.currentTime;
     [self updateProgressViewsWithTime:currentTime];
-//    if (currentTime == 0)
-//        [self stop];
+    if (currentTime > self.playerWithMaxDuration.duration) {
+        if (self.recorder)
+            [self save];
+        else
+            [self stopSynchronouslyWithMessageBlock:nil completion:nil];
+    }
 }
 
 #pragma mark - Stop
@@ -269,6 +273,8 @@ static const CGFloat kUpdateInterval = 0.2;
 - (void)record {
     NSString *path = [self pathForNewRecordFile];
     [self prepareRecorderWithPath:path];
+    if (!self.recorder)
+        return;
     [self updateRecButtonTitle];
     __weak typeof(self) weakSelf = self;
     [self playSynchronouslyWithMessageBlock:^{
@@ -296,17 +302,21 @@ static const CGFloat kUpdateInterval = 0.2;
     if (![self.recorder prepareRecordingToFileAtPath:path
                                             fileType:kAudioFileM4AType
                                                error:&error]) {
-        [[[UIAlertView alloc] initWithTitle:@"Error"
-                                    message:[NSString stringWithFormat:
-                                        @"Couldn't start recording: %@",
-                                        [error localizedDescription]]
-                                   delegate:nil
-                          cancelButtonTitle:@"OK"
-                          otherButtonTitles:nil] show];
+        NSString *message = [NSString stringWithFormat:@"Couldn't start recording: %@",
+                [error localizedDescription]];
+        [self showAlertWithMessage:message];
         self.recorder = nil;
         return;
     }
     [self.audioController addInputReceiver:self.recorder];
+}
+
+- (void)showAlertWithMessage:(NSString *)errorMessage {
+    [[[UIAlertView alloc] initWithTitle:@""
+                                message:errorMessage
+                               delegate:nil
+                      cancelButtonTitle:@"Ok"
+                      otherButtonTitles:nil] show];
 }
 
 #pragma mark - Save
@@ -318,77 +328,69 @@ static const CGFloat kUpdateInterval = 0.2;
             AERecorderStopRecording(strongSelf->_recorder);
         }
                                  completion:^{
-                                     [weakSelf finishRecordAndSaveTrack];
+                                     [weakSelf finishRecordingAndSave];
                                  }];
 }
 
-- (void)finishRecordAndSaveTrack {
-    [self.recorder finishRecording];
-    [self.audioController removeInputReceiver:self.recorder];
+- (void)finishRecordingAndSave {
     NSURL *fileURL = [NSURL fileURLWithPath:self.recorder.path];
+    [self finishRecording];
+    AVAsset *asset = [AVURLAsset URLAssetWithURL:fileURL options:nil];
+    NSArray *assetTracks = [asset tracksWithMediaType:AVMediaTypeAudio];
+    AVAssetTrack *assetTrack = [assetTracks firstObject];
+    NSTimeInterval recordDuration = CMTimeGetSeconds(asset.duration);
+    NSTimeInterval recordStartTime = self.playerWithMaxDuration.currentTime - recordDuration;
     AVMutableComposition *composition = [[AVMutableComposition alloc] init];
     AVMutableCompositionTrack *compositionTrack;
     compositionTrack = [composition addMutableTrackWithMediaType:AVMediaTypeAudio
                                                 preferredTrackID:kCMPersistentTrackID_Invalid];
-    AVAsset *asset = [AVURLAsset URLAssetWithURL:fileURL options:nil];
-    NSArray *assetTracks = [asset tracksWithMediaType:AVMediaTypeAudio];
-    AVAssetTrack *assetTrack = [assetTracks firstObject];
-    NSTimeInterval trackDuration = CMTimeGetSeconds(asset.duration);
-    NSTimeInterval trackStartTime = self.playerWithMaxDuration.currentTime - trackDuration;
-    [self insertEmptyTimeToCompositionTrack:compositionTrack
-                              withStartTime:0
-                                andDuration:trackStartTime];
-    CMTimeRange timeRangeInAsset = CMTimeRangeMake(kCMTimeZero, asset.duration);
-    CMTime startTime = CMTimeMakeWithSeconds(trackStartTime, NSEC_PER_SEC);
+    CMTime startTimeInAsset = kCMTimeZero;
+    CMTime startTimeInComposition = CMTimeMakeWithSeconds(recordStartTime, NSEC_PER_SEC);
+    if (recordStartTime < 0) {
+        startTimeInAsset = CMTimeMakeWithSeconds(-recordStartTime, NSEC_PER_SEC);
+        startTimeInComposition = kCMTimeZero;
+    }
+    CMTimeRange timeRangeInAsset = CMTimeRangeMake(startTimeInAsset, asset.duration);
     NSError *error = nil;
     BOOL success = [compositionTrack insertTimeRange:timeRangeInAsset
                                              ofTrack:assetTrack
-                                              atTime:startTime
+                                              atTime:startTimeInComposition
                                                error:&error];
-    if (!success)
-        NSLog(@"Insert Track Error: %@", error);
-    if ([self validateCompositionTrack:compositionTrack]) {
-        __weak typeof(self) weakSelf = self;
-        [self saveComposition:composition
-                  withSuccess:^(NSString *filePath, NSTimeInterval duration){
-                      [weakSelf saveTrackWithFilePath:filePath duration:duration];
-                      weakSelf.recorder = nil;
-                      [weakSelf updateRecButtonTitle];
-                  }
-                      failure:^(NSString *errorMessage){
-                          [[[UIAlertView alloc] initWithTitle:@""
-                                                      message:errorMessage
-                                                     delegate:nil
-                                            cancelButtonTitle:@"Ok"
-                                            otherButtonTitles:nil] show];
-                      }];
+    if (!success) {
+        [self showAlertWithMessage:[NSString stringWithFormat:@"Insert Track Error: %@", error]];
+        NSLog(@"%@", error);
     }
+    else if ([self validateCompositionTrack:compositionTrack])
+        [self saveCompositionAndAddNewTrack:composition];
 }
 
-- (void)saveTrackWithFilePath:(NSString *)filePath duration:(NSTimeInterval)duration {
-    Track *track = [Track trackWithName:filePath.lastPathComponent
-                              urlString:filePath];
-    [self.tracks addObject:track];
-    [self addPlayerForTrack:track];
-    [self.tableView reloadData];
-}
-
-- (void)insertEmptyTimeToCompositionTrack:(AVMutableCompositionTrack *)compositionTrack
-                            withStartTime:(NSTimeInterval)startTime
-                              andDuration:(NSTimeInterval)duration {
-    CMTime emptyStartTime = CMTimeMakeWithSeconds(startTime, NSEC_PER_SEC);
-    CMTime emptyDuration = CMTimeMakeWithSeconds(duration, NSEC_PER_SEC);
-    [compositionTrack insertEmptyTimeRange:CMTimeRangeMake(emptyStartTime, emptyDuration)];
+- (void)finishRecording {
+    [self.recorder finishRecording];
+    [self.audioController removeInputReceiver:self.recorder];
+    self.recorder = nil;
+    [self updateRecButtonTitle];
 }
 
 - (BOOL)validateCompositionTrack:(AVMutableCompositionTrack *)compositionAudioTrack {
     NSError *error = nil;
     if (![compositionAudioTrack validateTrackSegments:compositionAudioTrack.segments
                                                 error:&error]) {
-        NSLog(@"Track segmants are invalid: %@", error.localizedDescription);
+        [self showAlertWithMessage:
+            [NSString stringWithFormat:@"Track segments are invalid: %@", error]];
         return NO;
     }
     return YES;
+}
+
+- (void)saveCompositionAndAddNewTrack:(AVMutableComposition *)composition {
+    __weak typeof(self) weakSelf = self;
+    [self saveComposition:composition
+              withSuccess:^(NSString *filePath, NSTimeInterval duration) {
+                  [weakSelf addNewTrackWithFilePath:filePath duration:duration];
+              }
+                  failure:^(NSString *errorMessage) {
+                      [weakSelf showAlertWithMessage:errorMessage];
+                  }];
 }
 
 - (void)saveComposition:(AVMutableComposition *)composition
@@ -397,22 +399,18 @@ static const CGFloat kUpdateInterval = 0.2;
     AVAssetExportSession *exportSession;
     exportSession = [AVAssetExportSession exportSessionWithAsset:composition
                                                       presetName:AVAssetExportPresetAppleM4A];
-    if (nil == exportSession) {
+    if (!exportSession) {
         if (failureBlock)
             failureBlock(@"Can not create export session");
         return;
     }
-    NSString *cachesDirectory =
-        NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES)[0];
-    NSString *lastPathComponent =
-        [NSString stringWithFormat:@"%@.m4a", [[NSUUID UUID] UUIDString]];
-    NSString *filePath = [cachesDirectory stringByAppendingPathComponent:lastPathComponent];
-    NSLog(@"Output file path - %@", filePath);
+    NSString *filePath = [self pathForNewRecordFile];
     exportSession.outputURL = [NSURL fileURLWithPath:filePath];
     exportSession.outputFileType = AVFileTypeAppleM4A;
     [exportSession exportAsynchronouslyWithCompletionHandler:^{
         if (AVAssetExportSessionStatusCompleted == exportSession.status) {
             NSLog(@"AVAssetExportSessionStatusCompleted");
+            NSLog(@"Output file path - %@", filePath);
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (successBlock)
                     successBlock(filePath, CMTimeGetSeconds(composition.duration));
@@ -423,10 +421,20 @@ static const CGFloat kUpdateInterval = 0.2;
             if (AVAssetExportSessionStatusFailed == exportSession.status)
                 errorMessage = @"Failed to write file";
             NSLog(@"Export Session Status: %ld", (long) exportSession.status);
-            if (failureBlock)
-                failureBlock(errorMessage);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (failureBlock)
+                    failureBlock(errorMessage);
+            });
         }
     }];
+}
+
+- (void)addNewTrackWithFilePath:(NSString *)filePath duration:(NSTimeInterval)duration {
+    Track *track = [Track trackWithName:filePath.lastPathComponent
+                              urlString:filePath];
+    [self.tracks addObject:track];
+    [self addPlayerForTrack:track];
+    [self.tableView reloadData];
 }
 
 #pragma mark - UITableViewDataSource

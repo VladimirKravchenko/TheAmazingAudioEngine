@@ -101,7 +101,6 @@ void AERecorderStartRecording(__unsafe_unretained AERecorder* THIS) {
 
 void AERecorderStopRecording(__unsafe_unretained AERecorder* THIS) {
     THIS->_recording = NO;
-    NSLog(@"Stop recording time %f", THIS->_currentTime);
 }
 
 - (void)finishRecording {

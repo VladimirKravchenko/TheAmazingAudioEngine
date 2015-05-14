@@ -188,8 +188,6 @@ void AEAudioUnitFilePlayerStopInAudioController(
     THIS->_playhead = (SInt64) currentTime.mSampleTime;
     THIS->_playhead += THIS->_locatehead;
     THIS->_locatehead = THIS->_playhead;
-    NSLog(@"Stop playing %p with current time, %f", (__bridge void *)THIS,
-        (double) THIS->_playhead / (double) THIS->_audioDescription.mSampleRate);
 }
 
 + (id)audioUnitFilePlayerWithController:(AEAudioController *)audioController
