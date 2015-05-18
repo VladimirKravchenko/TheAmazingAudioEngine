@@ -73,6 +73,10 @@ static OSStatus renderCallback(
     AEAudioUnitFilePlayer *THIS = (AEAudioUnitFilePlayer *) channel;
     if (!THIS->_channelIsPlaying)
         return noErr;
+    if (THIS->_playhead < 0) {
+        THIS->_playhead += frames;
+        return noErr;
+    }
     AudioUnitRenderActionFlags flags = 0;
     OSStatus result = AudioUnitRender(
         THIS->_converterUnit ? THIS->_converterUnit : THIS->_audioUnit,
@@ -89,7 +93,7 @@ static OSStatus renderCallback(
 OSStatus AEAudioUnitFilePlayerSetupPlayRegion(__unsafe_unretained AEAudioUnitFilePlayer *THIS) {
     OSStatus result = -1;
     if (THIS->_audioUnitFile) {
-        if (THIS->_locatehead >= THIS->_lengthInFrames) {
+        if (THIS->_locatehead >= THIS->_lengthInFrames || THIS->_locatehead < 0) {
             THIS->_locatehead = 0;
         }
         ScheduledAudioFileRegion region;
@@ -253,7 +257,7 @@ void AEAudioUnitFilePlayerStopInAudioController(
 }
 
 - (void)setCurrentTime:(NSTimeInterval)currentTime {
-    if ((currentTime >= 0.0f) && (currentTime < [self duration])) {
+    if (currentTime < [self duration]) {
         if (self.channelIsPlaying) {
             // call our own setPlaying to get things in order
             [self setPlaying:NO];
