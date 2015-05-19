@@ -3804,7 +3804,7 @@ BOOL AEAudioControllerRenderMainOutput(
     return result;
 }
 
-#pragma mark - Play function for audio thread
+#pragma mark - Play / mute functions for audio thread
 
 AEChannelGroupRef AEAudioControllerSearchForGroupContainingChannelMatchingPointer(
     __unsafe_unretained AEAudioController *THIS,
@@ -3859,6 +3859,33 @@ void AEAudioControllerSetPlayingForChannel(
         checkResult(result, "AudioUnitSetParameter(kMultiChannelMixerParam_Enable)");
     }
     group->channels[index]->playing = playing && !muted;
+}
+
+void AEAudioControllerSetMutedForChannel(
+    __unsafe_unretained AEAudioController *THIS,
+    void *channel,
+    void *renderCallback,
+    BOOL muted
+) {
+    int index;
+    AEChannelGroupRef group = AEAudioControllerSearchForGroupContainingChannelMatchingPointer(
+        THIS, renderCallback, channel, THIS->_topGroup, &index
+    );
+    if (!group) return;
+    AEChannelRef channelElement = group->channels[index];
+    channelElement->muted = muted;
+    AudioUnitParameterValue value = channelElement->playing && !muted;
+    if (group->mixerAudioUnit) {
+        OSStatus result = AudioUnitSetParameter(
+            group->mixerAudioUnit,
+            kMultiChannelMixerParam_Enable,
+            kAudioUnitScope_Input,
+            index,
+            value,
+            0
+        );
+        checkResult(result, "AudioUnitSetParameter(kMultiChannelMixerParam_Enable)");
+    }
 }
 
 @end

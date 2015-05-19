@@ -193,6 +193,19 @@ void AEAudioUnitFilePlayerStopInAudioController(
     THIS->_locatehead = THIS->_playhead;
 }
 
+void AEAudioUnitFilePlayerSetMutedInAudioController(
+    __unsafe_unretained AEAudioUnitFilePlayer *THIS,
+    __unsafe_unretained AEAudioController *audioController,
+    BOOL muted
+) {
+    THIS->_channelIsMuted = muted;
+    AEAudioControllerSetMutedForChannel(
+        audioController,
+        (__bridge void *)THIS,
+        renderCallback,
+        muted);
+}
+
 + (id)audioUnitFilePlayerWithController:(AEAudioController *)audioController
                                   error:(NSError **)error {
     return [[AEAudioUnitFilePlayer alloc] initWithAudioController:audioController error:error];
