@@ -63,9 +63,16 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
 
 @synthesize url = _url, audioDescription = _audioDescription, completionBlock = _completionBlock;
 
+static void notifyPlayerDidReachEnd(AEAudioController *audioController, void *userInfo, int length) {
+    AEAudioUnitFilePlayer *THIS = (__bridge AEAudioUnitFilePlayer*)*(void**)userInfo;
+    if (THIS.completionBlock)
+        THIS.completionBlock();
+    THIS.completionBlock = nil;
+}
+
 static OSStatus renderCallback(
     id channel,
-    AEAudioController *audioController,
+    __unsafe_unretained AEAudioController *audioController,
     const AudioTimeStamp *time,
     UInt32 frames,
     AudioBufferList *audio
@@ -73,8 +80,8 @@ static OSStatus renderCallback(
     AEAudioUnitFilePlayer *THIS = (AEAudioUnitFilePlayer *) channel;
     if (!THIS->_channelIsPlaying)
         return noErr;
+    THIS->_playhead += frames;
     if (THIS->_playhead < 0) {
-        THIS->_playhead += frames;
         return noErr;
     }
     AudioUnitRenderActionFlags flags = 0;
@@ -87,6 +94,14 @@ static OSStatus renderCallback(
         audio
     );
     checkResult(result, "AudioUnitRender");
+    if (THIS->_playhead >= THIS->_lengthInFrames && THIS->_completionBlock) {
+        AEAudioControllerSendAsynchronousMessageToMainThread(
+            audioController,
+            notifyPlayerDidReachEnd,
+            &THIS,
+            sizeof(AEAudioUnitFilePlayer **)
+        );
+    }
     return result;
 }
 
@@ -316,7 +331,17 @@ void AEAudioUnitFilePlayerSetMutedInAudioController(
                                          userInfo:@{NSLocalizedDescriptionKey : @"Couldn't initialise audio unit"}];
             return nil;
         }
-
+        // Attempt to set the max frames per slice
+        UInt32 maxFPS = 4096;
+        result = AudioUnitSetProperty(
+            _audioUnit,
+            kAudioUnitProperty_MaximumFramesPerSlice,
+            kAudioUnitScope_Global,
+            0,
+            &maxFPS,
+            sizeof(maxFPS)
+        );
+        checkResult(result, "AudioUnitSetProperty maxFPS");
         // Try to set the output audio description
         AudioStreamBasicDescription audioDescription = audioController.audioDescription;
         result = AudioUnitSetProperty(_audioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0, &audioDescription, sizeof(AudioStreamBasicDescription));
@@ -347,10 +372,6 @@ void AEAudioUnitFilePlayerSetMutedInAudioController(
                 return nil;
             }
         }
-
-        // Attempt to set the max frames per slice
-        UInt32 maxFPS = 4096;
-        AudioUnitSetProperty(_audioUnit, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0, &maxFPS, sizeof(maxFPS));
         checkResult(AUGraphUpdate(_audioGraph, NULL), "AUGraphUpdate");
         checkResult(AudioUnitInitialize(_audioUnit), "AudioUnitInitialize");
         if (_converterUnit) {

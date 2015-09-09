@@ -196,19 +196,20 @@ static const CGFloat kUpdateInterval = 0.2;
         ^(AEAudioUnitFilePlayer *player, NSUInteger idx, BOOL *stop) {
             [player setCurrentTime:self.playerWithMaxDuration.currentTime];
         }];
-    CFMutableArrayRef players = (__bridge CFMutableArrayRef) self.players;
+    CFMutableArrayRef playersRef = (__bridge_retained CFMutableArrayRef) self.players;
     __weak typeof(self) weakSelf = self;
     [self.audioController performAsynchronousMessageExchangeWithBlock:^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
-            for (CFIndex i = 0; i < CFArrayGetCount(players); i++) {
+            for (CFIndex i = 0; i < CFArrayGetCount(playersRef); i++) {
                 AEAudioUnitFilePlayer *player =
-                    (AEAudioUnitFilePlayer *) CFArrayGetValueAtIndex(players, i);
+                    (AEAudioUnitFilePlayer *) CFArrayGetValueAtIndex(playersRef, i);
                 AEAudioUnitFilePlayerPlayWithAudioController(player, strongSelf->_audioController);
             }
             if (messageBlock)
                 messageBlock();
         }
                                                         responseBlock:^{
+                                                            CFRelease(playersRef);
                                                             if (completionBlock)
                                                                 completionBlock();
                                                         }];
@@ -246,20 +247,21 @@ static const CGFloat kUpdateInterval = 0.2;
                                completion:(dispatch_block_t)completionBlock {
     self.isPlaying = NO;
     [self updatePlayButtonTitle];
-    CFMutableArrayRef players = (__bridge CFMutableArrayRef) self.players;
+    CFMutableArrayRef playersRef = (__bridge_retained CFMutableArrayRef) self.players;
     __weak typeof(self) weakSelf = self;
     [self.audioController
         performAsynchronousMessageExchangeWithBlock:^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
             if (messageBlock)
                 messageBlock();
-            for (CFIndex i = 0; i < CFArrayGetCount(players); i++) {
+            for (CFIndex i = 0; i < CFArrayGetCount(playersRef); i++) {
                 AEAudioUnitFilePlayer *player =
-                    (AEAudioUnitFilePlayer *) CFArrayGetValueAtIndex(players, i);
+                    (AEAudioUnitFilePlayer *) CFArrayGetValueAtIndex(playersRef, i);
                 AEAudioUnitFilePlayerStopInAudioController(player, strongSelf->_audioController);
             }
         }
                                       responseBlock:^{
+                                          CFRelease(playersRef);
                                           if (completionBlock)
                                               completionBlock();
                                           [weakSelf.progressUpdateTimer invalidate];
