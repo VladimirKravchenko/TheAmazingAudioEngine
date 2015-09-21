@@ -37,6 +37,8 @@
 		4C99588E16C0825F0011FB01 /* AEAudioUnitFilter.m in Sources */ = {isa = PBXBuildFile; fileRef = 4C99588C16C0825F0011FB01 /* AEAudioUnitFilter.m */; };
 		4CEC0EB916B5294300D11ED9 /* AEBlockFilter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4CEC0EB716B5294200D11ED9 /* AEBlockFilter.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		4CEC0EBA16B5294300D11ED9 /* AEBlockFilter.m in Sources */ = {isa = PBXBuildFile; fileRef = 4CEC0EB816B5294300D11ED9 /* AEBlockFilter.m */; };
+		FB30E1951F700B3B7ABEAC32 /* AEAudioUnitFilePlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = FB30E817CEEB346079A79DB3 /* AEAudioUnitFilePlayer.h */; };
+		FB30ED255325CB162E21934B /* AEAudioUnitFilePlayer.m in Sources */ = {isa = PBXBuildFile; fileRef = FB30E7BBB39A33B41422B2A1 /* AEAudioUnitFilePlayer.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -101,6 +103,8 @@
 		B0EE36FF1AD4270400D7AB17 /* AESequencerChannel.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AESequencerChannel.m; sourceTree = "<group>"; };
 		B0EE37001AD4270400D7AB17 /* AESequencerChannelSequence.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AESequencerChannelSequence.h; sourceTree = "<group>"; };
 		B0EE37011AD4270400D7AB17 /* AESequencerChannelSequence.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AESequencerChannelSequence.m; sourceTree = "<group>"; };
+		FB30E7BBB39A33B41422B2A1 /* AEAudioUnitFilePlayer.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = AEAudioUnitFilePlayer.m; path = Modules/AEAudioUnitFilePlayer.m; sourceTree = "<group>"; };
+		FB30E817CEEB346079A79DB3 /* AEAudioUnitFilePlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = AEAudioUnitFilePlayer.h; path = Modules/AEAudioUnitFilePlayer.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -158,6 +162,8 @@
 				4CA689C01542DC8C00AF8DDD /* AEPlaythroughChannel.m */,
 				4C38DC501545840E009F4454 /* AERecorder.h */,
 				4C38DC511545840E009F4454 /* AERecorder.m */,
+				FB30E817CEEB346079A79DB3 /* AEAudioUnitFilePlayer.h */,
+				FB30E7BBB39A33B41422B2A1 /* AEAudioUnitFilePlayer.m */,
 			);
 			name = Modules;
 			sourceTree = "<group>";
@@ -253,6 +259,7 @@
 				4C456B8D16D59365008ED99D /* AEBlockAudioReceiver.h in Headers */,
 				4C4B11F416833FDD00A3BA2E /* AEBlockChannel.h in Headers */,
 				4C09450116FBD7460054608E /* AEBlockScheduler.h in Headers */,
+				FB30E1951F700B3B7ABEAC32 /* AEAudioUnitFilePlayer.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -355,6 +362,7 @@
 				4C99588E16C0825F0011FB01 /* AEAudioUnitFilter.m in Sources */,
 				4C456B8E16D59365008ED99D /* AEBlockAudioReceiver.m in Sources */,
 				4C09450216FBD7460054608E /* AEBlockScheduler.m in Sources */,
+				FB30ED255325CB162E21934B /* AEAudioUnitFilePlayer.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
