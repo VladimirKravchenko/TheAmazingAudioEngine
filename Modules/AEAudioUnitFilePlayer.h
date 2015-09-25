@@ -53,6 +53,7 @@
 @property (nonatomic, assign) float pan;                    //!< Track pan
 @property (nonatomic, readonly) AudioStreamBasicDescription audioDescription;  //!< Track audio description
 @property (nonatomic, copy) void(^completionBlock)();       //!< A block to be called when playback finishes
+@property (nonatomic, readwrite) BOOL channelIsMuted;
 
 void AEAudioUnitFilePlayerPlayWithAudioController(
     __unsafe_unretained AEAudioUnitFilePlayer *THIS,
@@ -61,6 +62,12 @@ void AEAudioUnitFilePlayerPlayWithAudioController(
 void AEAudioUnitFilePlayerStopInAudioController(
     __unsafe_unretained AEAudioUnitFilePlayer *THIS,
     __unsafe_unretained AEAudioController *audioController
+);
+
+void AEAudioUnitFilePlayerSetMutedInAudioController(
+    __unsafe_unretained AEAudioUnitFilePlayer *THIS,
+    __unsafe_unretained AEAudioController *audioController,
+    BOOL muted
 );
 
 AudioTimeStamp AEAudioUnitFilePlayerCurrentTime(__unsafe_unretained AEAudioUnitFilePlayer *THIS);

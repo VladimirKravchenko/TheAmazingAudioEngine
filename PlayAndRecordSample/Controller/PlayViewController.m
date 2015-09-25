@@ -7,7 +7,6 @@
 //
 
 #import <AVFoundation/AVFoundation.h>
-#import <CoreMedia/CoreMedia.h>
 #import "PlayViewController.h"
 #import "AERecorder.h"
 #import "AEAudioUnitFilePlayer.h"
@@ -197,23 +196,23 @@ static const CGFloat kUpdateInterval = 0.2;
         ^(AEAudioUnitFilePlayer *player, NSUInteger idx, BOOL *stop) {
             [player setCurrentTime:self.playerWithMaxDuration.currentTime];
         }];
-    CFMutableArrayRef players = (__bridge CFMutableArrayRef) self.players;
+    CFMutableArrayRef playersRef = (__bridge_retained CFMutableArrayRef) self.players;
     __weak typeof(self) weakSelf = self;
-    [self.audioController
-        performAsynchronousMessageExchangeWithBlock:^{
+    [self.audioController performAsynchronousMessageExchangeWithBlock:^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
-            for (CFIndex i = 0; i < CFArrayGetCount(players); i++) {
+            for (CFIndex i = 0; i < CFArrayGetCount(playersRef); i++) {
                 AEAudioUnitFilePlayer *player =
-                    (AEAudioUnitFilePlayer *) CFArrayGetValueAtIndex(players, i);
+                    (AEAudioUnitFilePlayer *) CFArrayGetValueAtIndex(playersRef, i);
                 AEAudioUnitFilePlayerPlayWithAudioController(player, strongSelf->_audioController);
             }
             if (messageBlock)
                 messageBlock();
         }
-                                      responseBlock:^{
-                                          if (completionBlock)
-                                              completionBlock();
-                                      }];
+                                                        responseBlock:^{
+                                                            CFRelease(playersRef);
+                                                            if (completionBlock)
+                                                                completionBlock();
+                                                        }];
     if (![self.progressUpdateTimer isValid])
         [self addProgressUpdateTimer];
 }
@@ -248,23 +247,24 @@ static const CGFloat kUpdateInterval = 0.2;
                                completion:(dispatch_block_t)completionBlock {
     self.isPlaying = NO;
     [self updatePlayButtonTitle];
-    CFMutableArrayRef players = (__bridge CFMutableArrayRef) self.players;
+    CFMutableArrayRef playersRef = (__bridge_retained CFMutableArrayRef) self.players;
     __weak typeof(self) weakSelf = self;
     [self.audioController
         performAsynchronousMessageExchangeWithBlock:^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
             if (messageBlock)
                 messageBlock();
-            for (CFIndex i = 0; i < CFArrayGetCount(players); i++) {
+            for (CFIndex i = 0; i < CFArrayGetCount(playersRef); i++) {
                 AEAudioUnitFilePlayer *player =
-                    (AEAudioUnitFilePlayer *) CFArrayGetValueAtIndex(players, i);
+                    (AEAudioUnitFilePlayer *) CFArrayGetValueAtIndex(playersRef, i);
                 AEAudioUnitFilePlayerStopInAudioController(player, strongSelf->_audioController);
             }
         }
                                       responseBlock:^{
+                                          CFRelease(playersRef);
                                           if (completionBlock)
                                               completionBlock();
-                                          [self.progressUpdateTimer invalidate];
+                                          [weakSelf.progressUpdateTimer invalidate];
                                       }];
 }
 
@@ -303,7 +303,7 @@ static const CGFloat kUpdateInterval = 0.2;
                                             fileType:kAudioFileM4AType
                                                error:&error]) {
         NSString *message = [NSString stringWithFormat:@"Couldn't start recording: %@",
-                [error localizedDescription]];
+                                                       [error localizedDescription]];
         [self showAlertWithMessage:message];
         self.recorder = nil;
         return;
@@ -460,9 +460,14 @@ static const CGFloat kUpdateInterval = 0.2;
     Track *track = self.tracks[(NSUInteger) indexPath.row];
     AEAudioUnitFilePlayer *player = [self playerForTrack:track];
     if (player) {
-        player.volume = player.volume > 0 ? 0 : 1;
-        NSString *title = player.volume > 0 ? @"MUTE" : @"UNMUTE";
-        [cell.muteButton setTitle:title forState:UIControlStateNormal];
+        AEAudioController *audioController = self.audioController;
+        BOOL muted = !player.channelIsMuted;
+        [self.audioController performAsynchronousMessageExchangeWithBlock:^{
+            AEAudioUnitFilePlayerSetMutedInAudioController(player, audioController, muted);
+        }                                                   responseBlock:^{
+            NSString *title = player.channelIsMuted ? @"UNMUTE" : @"MUTE";
+            [cell.muteButton setTitle:title forState:UIControlStateNormal];
+        }];
     }
     else
         NSLog(@"No player was found for cell at %li row", (long) indexPath.row);

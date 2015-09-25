@@ -1637,6 +1637,13 @@ void AEAudioControllerSetPlayingForChannel (
     BOOL muted
 );
 
+void AEAudioControllerSetMutedForChannel (
+    __unsafe_unretained AEAudioController *THIS,
+    void *channel,
+    void *renderCallback,
+    BOOL muted
+);
+
 @end
 
 #ifdef __cplusplus

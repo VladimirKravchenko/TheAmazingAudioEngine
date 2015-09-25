@@ -286,7 +286,7 @@ static OSStatus fillComplexBufferInputProc(AudioConverterRef             inAudio
                                            void                          *inUserData) {
 
     struct fillComplexBufferInputProc_t *arg = inUserData;
-    
+
     UInt32 bytesToWrite = MIN(*ioNumberDataPackets * arg->bytesPerFrame, arg->bufferList->mBuffers[0].mDataByteSize);
     for ( int i=0; i<ioData->mNumberBuffers; i++ ) {
         ioData->mBuffers[i].mData = arg->bufferList->mBuffers[i].mData;
@@ -307,9 +307,9 @@ typedef struct __channel_producer_arg_t {
 static OSStatus channelAudioProducer(void *userInfo, AudioBufferList *audio, UInt32 *frames) {
     channel_producer_arg_t *arg = (channel_producer_arg_t*)userInfo;
     AEChannelRef channel = arg->channel;
-    
+
     OSStatus status = noErr;
-    
+
     // See if there's another filter
     for ( int i=channel->callbacks.count-1, filterIndex=0; i>=0; i-- ) {
         callback_t *callback = &channel->callbacks.callbacks[i];
@@ -327,30 +327,30 @@ static OSStatus channelAudioProducer(void *userInfo, AudioBufferList *audio, UIn
     for ( int i=0; i<audio->mNumberBuffers; i++ ) {
         memset(audio->mBuffers[i].mData, 0, audio->mBuffers[i].mDataByteSize);
     }
-    
+
     if ( channel->type == kChannelTypeChannel ) {
         AEAudioControllerRenderCallback callback = (AEAudioControllerRenderCallback) channel->ptr;
         __unsafe_unretained id<AEAudioPlayable> channelObj = (__bridge id<AEAudioPlayable>) channel->object;
-        
+
         status = callback(channelObj, (__bridge AEAudioController*)channel->audioController, &channel->timeStamp, *frames, audio);
         channel->timeStamp.mSampleTime += *frames;
-        
+
     } else if ( channel->type == kChannelTypeGroup ) {
         AEChannelGroupRef group = (AEChannelGroupRef)channel->ptr;
-        
+
         // Tell mixer/mixer's converter unit to render into audio
         status = AudioUnitRender(group->converterUnit ? group->converterUnit : group->mixerAudioUnit, arg->ioActionFlags, &arg->originalTimeStamp, 0, *frames, audio);
         if ( !AECheckOSStatus(status, "AudioUnitRender") ) return status;
-        
+
         if ( group->level_monitor_data.monitoringEnabled ) {
             performLevelMonitoring(&group->level_monitor_data, audio, *frames);
         }
-        
+
         // Advance the sample time, to make sure we continue to render if we're called again with the same arguments
         arg->timeStamp.mSampleTime += *frames;
         arg->originalTimeStamp.mSampleTime += *frames;
     }
-    
+
     return status;
 }
 
@@ -4133,6 +4133,33 @@ void AEAudioControllerSetPlayingForChannel(
         AECheckOSStatus(result, "AudioUnitSetParameter(kMultiChannelMixerParam_Enable)");
     }
     group->channels[index]->playing = playing && !muted;
+}
+
+void AEAudioControllerSetMutedForChannel(
+    __unsafe_unretained AEAudioController *THIS,
+    void *channel,
+    void *renderCallback,
+    BOOL muted
+) {
+    int index;
+    AEChannelGroupRef group = AEAudioControllerSearchForGroupContainingChannelMatchingPointer(
+        THIS, renderCallback, channel, THIS->_topGroup, &index
+    );
+    if (!group) {return;}
+    AEChannelRef channelElement = group->channels[index];
+    channelElement->muted = muted;
+    AudioUnitParameterValue value = channelElement->playing && !muted;
+    if (group->mixerAudioUnit) {
+        OSStatus result = AudioUnitSetParameter(
+            group->mixerAudioUnit,
+            kMultiChannelMixerParam_Enable,
+            kAudioUnitScope_Input,
+            index,
+            value,
+            0
+        );
+        AECheckOSStatus(result, "AudioUnitSetParameter(kMultiChannelMixerParam_Enable)");
+    }
 }
 
 @end
