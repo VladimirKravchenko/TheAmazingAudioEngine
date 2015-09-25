@@ -28,7 +28,7 @@ extern "C" {
 #endif
 
 #import <Foundation/Foundation.h>
-#import "TheAmazingAudioEngine.h"
+#import "AEAudioController.h"
 
 /*!
  * Audio Unit Channel
@@ -44,28 +44,51 @@ extern "C" {
  * Create a new Audio Unit channel
  *
  * @param audioComponentDescription The structure that identifies the audio unit
- * @param audioController The audio controller
- * @param error On output, if not NULL, will point to an error if a problem occurred
  * @return The initialised channel
  */
-- (id)initWithComponentDescription:(AudioComponentDescription)audioComponentDescription
-                   audioController:(AEAudioController*)audioController
-                             error:(NSError**)error;
+- (id)initWithComponentDescription:(AudioComponentDescription)audioComponentDescription;
 
 /*!
  * Create a new Audio Unit channel, with a block to run before initialization of the unit 
  *
  * @param audioComponentDescription The structure that identifies the audio unit
- * @param audioController The audio controller
  * @param preInitializeBlock A block to run before the audio unit is initialized.
  *              This can be used to set some properties that needs to be set before the unit is initialized.
- * @param error On output, if not NULL, will point to an error if a problem occurred
  * @return The initialised channel
  */
 - (id)initWithComponentDescription:(AudioComponentDescription)audioComponentDescription
-                   audioController:(AEAudioController*)audioController
-                preInitializeBlock:(void(^)(AudioUnit audioUnit))block
-                             error:(NSError**)error;
+                preInitializeBlock:(void(^)(AudioUnit audioUnit))preInitializeBlock;
+
+/*!
+ * Retrieve audio unit reference
+ *
+ *  This method, for use on the realtime audio thread, allows subclasses and external
+ *  classes to access the audio unit.
+ *
+ * @param channel The channel
+ * @returns Audio unit reference
+ */
+AudioUnit AEAudioUnitChannelGetAudioUnit(__unsafe_unretained AEAudioUnitChannel * channel);
+
+/*!
+ * Get an audio unit parameter
+ *
+ * @param parameterId The audio unit parameter identifier
+ * @return The value of the parameter
+ */
+- (double)getParameterValueForId:(AudioUnitParameterID)parameterId;
+
+/*!
+ * Set an audio unit parameter
+ *
+ *  Note: Parameters set via this method will be automatically assigned again if the
+ *  audio unit is recreated due to removal from the audio controller, an audio controller 
+ *  reload, or a media server error.
+ *
+ * @param value The value of the parameter to set
+ * @param parameterId The audio unit parameter identifier
+ */
+- (void)setParameterValue:(double)value forId:(AudioUnitParameterID)parameterId;
 
 /*!
  * Track volume
@@ -100,11 +123,6 @@ extern "C" {
  * The audio unit
  */
 @property (nonatomic, readonly) AudioUnit audioUnit;
-
-/*!
- * The audio graph node
- */
-@property (nonatomic, readonly) AUNode audioGraphNode;
 
 @end
 

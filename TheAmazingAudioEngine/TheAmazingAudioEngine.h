@@ -34,6 +34,7 @@ extern "C" {
 #import "AEAudioFileLoaderOperation.h"
 #import "AEAudioFilePlayer.h"
 #import "AEAudioFileWriter.h"
+#import "AEMemoryBufferPlayer.h"
 #import "AEBlockChannel.h"
 #import "AEBlockFilter.h"
 #import "AEBlockAudioReceiver.h"
@@ -42,6 +43,7 @@ extern "C" {
 #import "AEFloatConverter.h"
 #import "AEBlockScheduler.h"
 #import "AEUtilities.h"
+#import "AEMessageQueue.h"
 
 /*!
 @mainpage
@@ -186,13 +188,12 @@ extern "C" {
  - One-shot playback with a block to call upon completion
  - Pan, volume, mute
  
- To use it, call @link AEAudioFilePlayer::audioFilePlayerWithURL:audioController:error: audioFilePlayerWithURL:audioController:error: @endlink,
+ To use it, call @link AEAudioFilePlayer::audioFilePlayerWithURL:error: audioFilePlayerWithURL:error: @endlink,
  like so:
  
  @code
  NSURL *file = [[NSBundle mainBundle] URLForResource:@"Loop" withExtension:@"m4a"];
  self.loop = [AEAudioFilePlayer audioFilePlayerWithURL:file
-                                       audioController:_audioController
                                                  error:NULL];
  @endcode
  
@@ -283,10 +284,8 @@ extern "C" {
  The AEAudioUnitChannel class acts as a host for audio units, allowing you to use any generator audio unit as an
  audio source.
  
- To use it, call @link AEAudioUnitChannel::initWithComponentDescription:audioController:error: initWithComponentDescription:audioController:error: @endlink,
- passing in an `AudioComponentDescription` structure (you can use the utility function @link AEAudioComponentDescriptionMake @endlink for this),
- along with a reference to the AEAudioController instance, and optionally, a pointer to an NSError to be filled if the audio unit
- creation failed.
+ To use it, call @link AEAudioUnitChannel::initWithComponentDescription: initWithComponentDescription: @endlink,
+ passing in an `AudioComponentDescription` structure (you can use the utility function @link AEAudioComponentDescriptionMake @endlink for this).
  
  @code
  AudioComponentDescription component
@@ -294,18 +293,13 @@ extern "C" {
                                       kAudioUnitType_MusicDevice,
                                       kAudioUnitSubType_Sampler)
  
- NSError *error = NULL;
- self.sampler = [[AEAudioUnitChannel alloc]
-                       initWithComponentDescription:component
-                                    audioController:_audioController
-                                              error:&error];
- 
- if ( !_sampler ) {
-    // Report error
- }
+ self.sampler = [[AEAudioUnitChannel alloc] initWithComponentDescription:component];
  @endcode
  
- You can then access the audio unit directly via the [audioUnit](@ref AEAudioUnitFilter::audioUnit) property.
+ Once you have added the channel to the audio controller, you can then access the audio unit directly via the 
+ [audioUnit](@ref AEAudioUnitChannel::audioUnit) property. You can also add your own initialization step via the
+ @link AEAudioUnitChannel::initWithComponentDescription:preInitializeBlock: initWithComponentDescription:preInitializeBlock: @endlink
+ initializer.
  
  @section Adding-Channels Adding Channels
  
@@ -429,10 +423,8 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  
  The AEAudioUnitFilter class allows you to use audio units to apply effects to audio.
  
- To use it, call @link AEAudioUnitFilter::initWithComponentDescription:audioController:error: initWithComponentDescription:audioController:error: @endlink,
- passing in an `AudioComponentDescription` structure (you can use the utility function @link AEAudioComponentDescriptionMake @endlink for this),
- along with a reference to the AEAudioController instance, and optionally, a pointer to an NSError to be filled if the audio unit
- creation failed.
+ To use it, call @link AEAudioUnitFilter::initWithComponentDescription: initWithComponentDescription: @endlink,
+ passing in an `AudioComponentDescription` structure (you can use the utility function @link AEAudioComponentDescriptionMake @endlink for this):
  
  @code
  AudioComponentDescription component
@@ -440,18 +432,13 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
                                       kAudioUnitType_Effect,
                                       kAudioUnitSubType_Reverb2)
  
- NSError *error = NULL;
- self.reverb = [[AEAudioUnitFilter alloc]
-                       initWithComponentDescription:component
-                                    audioController:_audioController
-                                              error:&error];
- 
- if ( !_reverb ) {
-    // Report error
- }
+ self.reverb = [[AEAudioUnitFilter alloc] initWithComponentDescription:component];
  @endcode
  
- You can then access the audio unit directly via the [audioUnit](@ref AEAudioUnitFilter::audioUnit) property:
+ Once you have added the filter to a channel, channel group or main output, you can then access the audio unit directly via the
+ [audioUnit](@ref AEAudioUnitFilter::audioUnit) property. You can also add your own initialization step via the
+ @link AEAudioUnitFilter::initWithComponentDescription:preInitializeBlock: initWithComponentDescription:preInitializeBlock: @endlink
+ initializer.
  
  @code
  AudioUnitSetParameter(_reverb.audioUnit,
@@ -779,11 +766,12 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  
  - @link AEAllocateAndInitAudioBufferList @endlink will take an `AudioStreamBasicDescription` and a number of frames to
    allocate, and will allocate and initialise an audio buffer list and the corresponding memory buffers appropriately.
+ - @link AECreateStackCopyOfAudioBufferList @endlink will make a copy of an existing buffer on the stack (without any memory allocation), and optionally offset its mData pointers; useful for doing offset buffer fills with utilities that write to AudioBufferLists.
  - @link AECopyAudioBufferList @endlink will copy an existing audio buffer list into a new one, allocating memory as needed.
  - @link AEFreeAudioBufferList @endlink will free the memory pointed to by an audio buffer list.
- - @link AEInitAudioBufferList @endlink will initialize the values of an already-existing audio buffer list.
  - @link AEGetNumberOfFramesInAudioBufferList @endlink will take an `AudioStreamBasicDescription` and return the number
    of frames contained within the audio buffer list given the `mDataByteSize` values within.
+ - @link AEGetAudioBufferListSize @endlink returns the size of an AudioBufferList structure, for use when memcpy-ing buffer list structures.
  
  Note: Do not use those functions above that perform memory allocation or deallocation from within the Core Audio thread,
  as this may cause performance problems.
@@ -875,13 +863,13 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  @endcode
  
  To send messages from the Core Audio thread back to the main thread, you need to
- define a C callback, which takes the form defined by @link AEAudioControllerMainThreadMessageHandler @endlink,
+ define a C callback, which takes the form defined by @link AEMessageQueueMessageHandler @endlink,
  then call @link AEAudioController::AEAudioControllerSendAsynchronousMessageToMainThread AEAudioControllerSendAsynchronousMessageToMainThread @endlink, passing a reference to
  any parameters, with the length of the parameters in bytes.
  
  @code
  struct _myHandler_arg_t { int arg1; int arg2; };
- static void myHandler(AEAudioController *audioController, void *userInfo, int userInfoLength) {
+ static void myHandler(void *userInfo, int userInfoLength) {
     struct _myHandler_arg_t *arg = (struct _myHandler_arg_t*)userInfo;
     NSLog(@"On main thread; args are %d and %d", arg->arg1, arg->arg2);
  }
@@ -903,14 +891,14 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  callback you provide.
  
  **Note: This is an important distinction.** The bytes pointed to by the 'userInfo' parameter value are passed by *value*, not by reference.
- To pass a pointer to an instance of an Objective-C class, you need to pass a reference to the pointer.
+ To pass a pointer to an instance of an Objective-C class, you need to pass the address to the pointer to copy using the "&" operator.
  
  This:
  
  @code
  AEAudioControllerSendAsynchronousMessageToMainThread(THIS->_audioController,
                                                       myHandler,
-                                                      &THIS,
+                                                      &object,
                                                       sizeof(id) },
  @endcode
  
@@ -919,8 +907,15 @@ self.filter = [AEBlockFilter filterWithBlock:^(AEAudioControllerFilterProducer p
  @code
  AEAudioControllerSendAsynchronousMessageToMainThread(THIS->_audioController,
                                                       myHandler,
-                                                      THIS,
+                                                      object,
                                                       sizeof(id) },
+ @endcode
+ 
+ To access an Objective-C object pointer from the main thread handler function, you can bridge a 
+ dereferenced `void**` to your object type, like this:
+
+ @code
+ MyObject *object = (__bridge MyObject*)*(void**)userInfo;
  @endcode
   
  @section Timing-Receivers Receiving Time Cues

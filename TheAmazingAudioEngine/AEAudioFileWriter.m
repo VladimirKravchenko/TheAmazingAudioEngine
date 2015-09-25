@@ -25,23 +25,12 @@
 
 #import "AEAudioFileWriter.h"
 #import "TheAmazingAudioEngine.h"
-#import <AVFoundation/AVFoundation.h>
 
 NSString * const AEAudioFileWriterErrorDomain = @"com.theamazingaudioengine.AEAudioFileWriterErrorDomain";
-
-#define checkResult(result,operation) (_checkResult((result),(operation),strrchr(__FILE__, '/')+1,__LINE__))
-static inline BOOL _checkResult(OSStatus result, const char *operation, const char* file, int line) {
-    if ( result != noErr ) {
-        NSLog(@"%s:%d: %s result %d %08X %4.4s\n", file, line, operation, (int)result, (int)result, (char*)&result); 
-        return NO;
-    }
-    return YES;
-}
 
 @interface AEAudioFileWriter () {
     BOOL                        _writing;
     ExtAudioFileRef             _audioFile;
-    UInt32                      _priorMixOverrideValue;
     AudioStreamBasicDescription _audioDescription;
 }
 
@@ -52,7 +41,7 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
 @synthesize path = _path;
 
 + (BOOL)AACEncodingAvailable {
-#if TARGET_IPHONE_SIMULATOR
+#if !TARGET_OS_IPHONE
     return YES;
 #else
     static BOOL available;
@@ -65,13 +54,13 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
     UInt32 encoderSpecifier = kAudioFormatMPEG4AAC;
     UInt32 size;
     
-    if ( !checkResult(AudioFormatGetPropertyInfo(kAudioFormatProperty_Encoders, sizeof(encoderSpecifier), &encoderSpecifier, &size),
+    if ( !AECheckOSStatus(AudioFormatGetPropertyInfo(kAudioFormatProperty_Encoders, sizeof(encoderSpecifier), &encoderSpecifier, &size),
                       "AudioFormatGetPropertyInfo(kAudioFormatProperty_Encoders") ) return NO;
     
     UInt32 numEncoders = size / sizeof(AudioClassDescription);
     AudioClassDescription encoderDescriptions[numEncoders];
     
-    if ( !checkResult(AudioFormatGetProperty(kAudioFormatProperty_Encoders, sizeof(encoderSpecifier), &encoderSpecifier, &size, encoderDescriptions),
+    if ( !AECheckOSStatus(AudioFormatGetProperty(kAudioFormatProperty_Encoders, sizeof(encoderSpecifier), &encoderSpecifier, &size, encoderDescriptions),
                       "AudioFormatGetProperty(kAudioFormatProperty_Encoders") ) {
         available_set = YES;
         available = NO;
@@ -109,7 +98,7 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
 }
 
 - (BOOL)beginWritingToFileAtPath:(NSString*)path fileType:(AudioFileTypeID)fileType bitDepth:(UInt32)bits error:(NSError**)error {
-    return [self beginWritingToFileAtPath:path fileType:fileType bitDepth:16 channels:0 error:error];
+    return [self beginWritingToFileAtPath:path fileType:fileType bitDepth:bits channels:0 error:error];
 }
 
 - (BOOL)beginWritingToFileAtPath:(NSString*)path fileType:(AudioFileTypeID)fileType bitDepth:(UInt32)bits channels:(UInt32)channels error:(NSError**)error
@@ -130,30 +119,15 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
             return NO;
         }
         
-        AVAudioSession *audioSession = [AVAudioSession sharedInstance];
-        
-        // AAC won't work if the 'mix with others' session property is enabled. Disable it if it's on.
-        UInt32 size = sizeof(_priorMixOverrideValue);
-        _priorMixOverrideValue = audioSession.categoryOptions & AVAudioSessionCategoryOptionMixWithOthers;
-        
-        if ( _priorMixOverrideValue != NO ) {
-            NSError *error = nil;
-            if ( ![audioSession setCategory:audioSession.category
-                                withOptions:audioSession.categoryOptions & ~AVAudioSessionCategoryOptionMixWithOthers
-                                      error:&error] ) {
-                NSLog(@"Couldn't update category options: %@", error);
-            }
-        }
-
         // Get the output audio description
         AudioStreamBasicDescription destinationFormat;
         memset(&destinationFormat, 0, sizeof(destinationFormat));
         destinationFormat.mChannelsPerFrame = channels;
         destinationFormat.mSampleRate = _audioDescription.mSampleRate;
         destinationFormat.mFormatID = kAudioFormatMPEG4AAC;
-        size = sizeof(destinationFormat);
+        UInt32 size = sizeof(destinationFormat);
         status = AudioFormatGetProperty(kAudioFormatProperty_FormatInfo, 0, NULL, &size, &destinationFormat);
-        if ( !checkResult(status, "AudioFormatGetProperty(kAudioFormatProperty_FormatInfo") ) {
+        if ( !AECheckOSStatus(status, "AudioFormatGetProperty(kAudioFormatProperty_FormatInfo") ) {
             int fourCC = CFSwapInt32HostToBig(status);
             if ( error ) *error = [NSError errorWithDomain:NSOSStatusErrorDomain 
                                                       code:status 
@@ -169,18 +143,19 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
                                            kAudioFileFlags_EraseFile, 
                                            &_audioFile);
         
-        if ( !checkResult(status, "ExtAudioFileCreateWithURL") ) {
+        if ( !AECheckOSStatus(status, "ExtAudioFileCreateWithURL") ) {
             int fourCC = CFSwapInt32HostToBig(status);
             if ( error ) *error = [NSError errorWithDomain:NSOSStatusErrorDomain 
                                                       code:status 
                                                   userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:NSLocalizedString(@"Couldn't open the output file (error %d/%4.4s)", @""), status, (char*)&fourCC]}];
             return NO;
         }
-        
+
+#if TARGET_OS_IPHONE
         UInt32 codecManfacturer = kAppleSoftwareAudioCodecManufacturer;
         status = ExtAudioFileSetProperty(_audioFile, kExtAudioFileProperty_CodecManufacturer, sizeof(UInt32), &codecManfacturer);
         
-        if ( !checkResult(status, "ExtAudioFileSetProperty(kExtAudioFileProperty_CodecManufacturer") ) {
+        if ( !AECheckOSStatus(status, "ExtAudioFileSetProperty(kExtAudioFileProperty_CodecManufacturer") ) {
             int fourCC = CFSwapInt32HostToBig(status);
             if (error) *error = [NSError errorWithDomain:NSOSStatusErrorDomain
                                                     code:status
@@ -188,6 +163,7 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
             ExtAudioFileDispose(_audioFile);
             return NO;
         }
+#endif
     } else {
         
         // Derive the output audio description from the client format, but with interleaved, big endian (if AIFF) signed integers.
@@ -208,7 +184,7 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
                                            kAudioFileFlags_EraseFile, 
                                            &_audioFile);
         
-        if ( !checkResult(status, "ExtAudioFileCreateWithURL") ) {
+        if ( !AECheckOSStatus(status, "ExtAudioFileCreateWithURL") ) {
             int fourCC = CFSwapInt32HostToBig(status);
             if ( error ) *error = [NSError errorWithDomain:NSOSStatusErrorDomain 
                                                       code:status 
@@ -219,7 +195,7 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
     
     // Set up the converter
     status = ExtAudioFileSetProperty(_audioFile, kExtAudioFileProperty_ClientDataFormat, sizeof(AudioStreamBasicDescription), &_audioDescription);
-    if ( !checkResult(status, "ExtAudioFileSetProperty(kExtAudioFileProperty_ClientDataFormat") ) {
+    if ( !AECheckOSStatus(status, "ExtAudioFileSetProperty(kExtAudioFileProperty_ClientDataFormat") ) {
         int fourCC = CFSwapInt32HostToBig(status);
         if ( error ) *error = [NSError errorWithDomain:NSOSStatusErrorDomain 
                                                   code:status 
@@ -229,7 +205,7 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
     }
     
     // Init the async file writing mechanism
-    checkResult(ExtAudioFileWriteAsync(_audioFile, 0, NULL), "ExtAudioFileWriteAsync");
+    AECheckOSStatus(ExtAudioFileWriteAsync(_audioFile, 0, NULL), "ExtAudioFileWriteAsync");
     
     self.path = path;
     _writing = YES;
@@ -242,17 +218,7 @@ static inline BOOL _checkResult(OSStatus result, const char *operation, const ch
 
     _writing = NO;
     
-    checkResult(ExtAudioFileDispose(_audioFile), "AudioFileClose");
-    
-    if ( _priorMixOverrideValue ) {
-        NSError *error = nil;
-        AVAudioSession *audioSession = [AVAudioSession sharedInstance];
-        if ( ![audioSession setCategory:audioSession.category
-                            withOptions:audioSession.categoryOptions | AVAudioSessionCategoryOptionMixWithOthers
-                                  error:&error] ) {
-            NSLog(@"Couldn't update category options: %@", error);
-        }
-    }
+    AECheckOSStatus(ExtAudioFileDispose(_audioFile), "AudioFileClose");
 }
 
 OSStatus AEAudioFileWriterAddAudio(__unsafe_unretained AEAudioFileWriter* THIS, AudioBufferList *bufferList, UInt32 lengthInFrames) {

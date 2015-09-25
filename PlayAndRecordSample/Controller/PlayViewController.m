@@ -74,9 +74,9 @@ static const CGFloat kUpdateInterval = 0.2;
         [AEAudioController nonInterleaved16BitStereoAudioDescription];
     self.audioController = [[AEAudioController alloc] initWithAudioDescription:description
                                                                   inputEnabled:YES];
-    _audioController.preferredBufferDuration = 0.005;
-    _audioController.useMeasurementMode = YES;
-    [_audioController start:nil];
+    self.audioController.preferredBufferDuration = 0.005;
+    self.audioController.useMeasurementMode = YES;
+    [self.audioController start:nil];
 }
 
 #pragma mark - Players

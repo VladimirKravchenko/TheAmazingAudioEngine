@@ -24,6 +24,7 @@
 //
 
 #import <AudioToolbox/AudioToolbox.h>
+#import <Foundation/Foundation.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,6 +41,30 @@ extern "C" {
  * @return The allocated and initialised audio buffer list
  */
 AudioBufferList *AEAllocateAndInitAudioBufferList(AudioStreamBasicDescription audioFormat, int frameCount);
+    
+/*!
+ * Create a stack copy of the given audio buffer list and offset mData pointers
+ *
+ *  This is useful for creating buffers that point to an offset into the original buffer,
+ *  to fill later regions of the buffer. It will create a local AudioBufferList* variable 
+ *  on the stack, with a name given by the first argument, copy the original AudioBufferList 
+ *  structure values, and offset the mData and mDataByteSize variables.
+ *
+ *  Note that only the AudioBufferList structure itself will be copied, not the data to
+ *  which it points.
+ *
+ * @param name Name of the variable to create on the stack
+ * @param sourceBufferList The original buffer list to copy
+ * @param offsetBytes Number of bytes to offset mData/mDataByteSize members
+ */
+#define AECreateStackCopyOfAudioBufferList(name, sourceBufferList, offsetBytes) \
+    char name_bytes[sizeof(AudioBufferList)+(sizeof(AudioBuffer)*(sourceBufferList->mNumberBuffers-1))]; \
+    memcpy(name_bytes, sourceBufferList, sizeof(name_bytes)); \
+    AudioBufferList * name = (AudioBufferList*)name_bytes; \
+    for ( int i=0; i<name->mNumberBuffers; i++ ) { \
+        name->mBuffers[i].mData = (char*)name->mBuffers[i].mData + offsetBytes; \
+        name->mBuffers[i].mDataByteSize -= offsetBytes; \
+    }
 
 /*!
  * Create a copy of an audio buffer list
@@ -59,31 +84,6 @@ AudioBufferList *AECopyAudioBufferList(AudioBufferList *original);
  *  callback). It may cause the thread to block, inducing audio stutters.
  */
 void AEFreeAudioBufferList(AudioBufferList *bufferList);
-    
-/*!
- * Initialize a pre-allocated audio buffer list structure
- *
- *  Populates the fields in the given audio buffer list. This utility is useful when
- *  allocating an audio buffer list on the stack.
- *
- *  Sample usage:
- *  
- *  @code
- *  char audioBufferListSpace[sizeof(AudioBufferList)+sizeof(AudioBuffer)];
- *  AudioBufferList *bufferList = (AudioBufferList*)audioBufferListSpace;
- *  AEInitAudioBufferList(bufferList, sizeof(audioBufferListSpace), &THIS->_audioFormat, THIS->_audioBytes, kAudioBufferSize);
- *  @endcode
- *
- * @param list          Audio buffer list to initialize
- * @param listSize      Size of buffer list structure (eg. "sizeof(list)")
- * @param audioFormat   Audio format describing audio to be stored in buffer list
- * @param data          Optional pointer to a buffer to point the mData pointers within buffer list to.
- *                      If audio format is more than one channel and non-interleaved, the buffer will be
- *                      broken up into even pieces, one for each channel.
- * @param dataSize      Size of 'data' buffer, in bytes.
- */
-void AEInitAudioBufferList(AudioBufferList *list, int listSize, AudioStreamBasicDescription audioFormat, void *data, int dataSize);
-
 
 /*!
  * Get the number of frames in a buffer list
@@ -96,8 +96,24 @@ void AEInitAudioBufferList(AudioBufferList *list, int listSize, AudioStreamBasic
  * @param oNumberOfChannels If not NULL, will be set to the number of channels of audio in 'list'
  * @return Number of frames in the buffer list
  */
-int AEGetNumberOfFramesInAudioBufferList(AudioBufferList *list, AudioStreamBasicDescription audioFormat, int *oNumberOfChannels);
+int AEGetNumberOfFramesInAudioBufferList(AudioBufferList *list,
+                                         AudioStreamBasicDescription audioFormat,
+                                         int *oNumberOfChannels);
 
+/*!
+ * Get the size of an AudioBufferList structure
+ *
+ *  Use this method when doing a memcpy of AudioBufferLists, for example.
+ *
+ *  Note: This method returns the size of the AudioBufferList structure itself, not the
+ *  audio bytes it points to.
+ *
+ * @param list          Pointer to an AudioBufferList
+ * @return Size of the AudioBufferList structure
+ */
+static inline size_t AEGetAudioBufferListSize(AudioBufferList *list) {
+    return sizeof(AudioBufferList) + (list->mNumberBuffers-1) * sizeof(AudioBuffer);
+}
 
 /*!
  * Create an AudioComponentDescription structure
@@ -142,6 +158,36 @@ uint64_t AEHostTicksFromSeconds(double seconds);
  * @return The time in seconds
  */
 double AESecondsFromHostTicks(uint64_t ticks);
+    
+/*!
+ * Rate limit an operation
+ *
+ *  This can be used to prevent spamming error messages to the console
+ *  when something goes wrong.
+ */
+BOOL AERateLimit(void);
+
+/*!
+ * Check an OSStatus condition
+ *
+ * @param result The result
+ * @param operation A description of the operation, for logging purposes
+ */
+#define AECheckOSStatus(result,operation) (_AECheckOSStatus((result),(operation),strrchr(__FILE__, '/')+1,__LINE__))
+static inline BOOL _AECheckOSStatus(OSStatus result, const char *operation, const char* file, int line) {
+    if ( result != noErr ) {
+        if ( AERateLimit() ) {
+            int fourCC = CFSwapInt32HostToBig(result);
+            if ( isascii(((char*)&fourCC)[0]) && isascii(((char*)&fourCC)[1]) && isascii(((char*)&fourCC)[2]) ) {
+                NSLog(@"%s:%d: %s: '%4.4s' (%d)", file, line, operation, (char*)&fourCC, (int)result);
+            } else {
+                NSLog(@"%s:%d: %s: %d", file, line, operation, (int)result);
+            }
+        }
+        return NO;
+    }
+    return YES;
+}
     
 #ifdef __cplusplus
 }
